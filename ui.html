@@ -36,6 +36,8 @@ header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid 
 .tb:disabled { opacity: .35; cursor: default; }
 .tb.danger:hover:not(:disabled) { background: var(--danger-bg); border-color: rgba(255,100,100,.35); }
 .tb.danger:hover:not(:disabled) svg { color: var(--danger); }
+.info-btn { width: 34px; padding: 0; justify-content: center; margin-left: -6px; }
+.info-btn svg { color: var(--accent-2); }
 .vsep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
 .apply { height: 34px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; cursor: pointer;
   display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(77,141,255,.3); margin-left: 4px; }
@@ -180,6 +182,7 @@ input[type=range] { width: 90px; accent-color: var(--accent); }
 <div class="app">
   <header>
     <div class="logo" title="CS:S Texture Changer"><span data-i="swapSmall"></span></div>
+    <button class="tb info-btn" id="infoBtn" title="How map textures work"><span data-i="info"></span></button>
     <div class="chip" id="activeChip"></div>
     <button class="tb" id="openFolder" title="Open the mod folder"><span data-i="folderOpen"></span></button>
     <div class="spacer"></div>
@@ -266,6 +269,7 @@ const I = {
   upload: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>',
   eye: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeOff: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.4 3.3M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/></svg>',
+  info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-5M12 8h.01"/></svg>',
   x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   undo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
@@ -450,6 +454,8 @@ window.addEventListener('pywebviewready', async () => {
   await loadMap(null);
   $('splash').style.display = 'none';
   if (init.toast) toast(init.toast, 'warn');
+  if (!st.seenInfo) { await showInfo(); S.seenInfo = true; saveSettings(); }  // first launch only
+  else S.seenInfo = true;
 });
 
 function needGame() {
@@ -684,7 +690,7 @@ function renderCompare() {
 }
 function saveSettings() {  // kept between launches
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => call('save_settings', { compare: cmp, sort: M.sort, pSort: P.sort, pickSrc: S.pickSrc }), 400);
+  saveTimer = setTimeout(() => call('save_settings', { compare: cmp, sort: M.sort, pSort: P.sort, pickSrc: S.pickSrc, seenInfo: !!S.seenInfo }), 400);
 }
 $('eyeBtn').onclick = () => { cmp.on = !cmp.on; renderCompare(); saveSettings(); };
 $('opacity').addEventListener('input', () => { cmp.opacity = $('opacity').value / 100; renderCompare(); saveSettings(); });
@@ -773,6 +779,17 @@ stage.addEventListener('drop', async e => {
 });
 window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => e.preventDefault());
+
+/* ---------- how map textures work: shown on first launch and from the info button ---------- */
+const INFO_TEXT = `Textures packed inside a map only change on ONE map at a time: the active map, shown next to the info button. The map you last applied changes on becomes active automatically.
+
+That map has to be the FIRST map you load or join after starting CS:S. If you join a different map first, or the server changes map, its packed textures go back to normal until you restart the game.
+
+Base game textures aren't affected: changes to those work on every map.
+
+Always restart CS:S after applying.`;
+const showInfo = () => modal('How map textures work', INFO_TEXT, [{ label: 'Got it', value: true, cls: 'go' }]);
+$('infoBtn').onclick = showInfo;
 
 /* ---------- modal + toast ---------- */
 function modal(title, text, buttons) {
