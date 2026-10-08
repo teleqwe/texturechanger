@@ -7,9 +7,9 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
-import winreg
 from functools import partial
 from pathlib import Path
 from zipfile import BadZipFile
@@ -21,7 +21,10 @@ from srctools.vpk import VPK
 from srctools.vtf import VTF, ImageFormats, VTFFlags
 
 TITLE = 'CS:S Texture Changer'
-SETTINGS = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'CSS Texture Changer', 'settings.json')
+WINDOWS = sys.platform == 'win32'
+SETTINGS = (os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'CSS Texture Changer', 'settings.json')
+            if WINDOWS else
+            os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'texturechanger', 'settings.json'))
 MOD_NAME = 'texturechanger'
 GLOBAL = '_global'  # profile for changes made under "All game textures"; always installed
 # Same order as gameinfo.txt, so the first VPK containing a file is the one the game uses.
@@ -47,19 +50,32 @@ PIN_LINE_RE = re.compile(rf'^[^\n]*{re.escape(PIN_MARK)}[^\n]*\n', re.M)
 PIN_PATH_RE = re.compile(rf'"\|gameinfo_path\|([^"]+)"[ \t]*{re.escape(PIN_MARK)}')
 
 
+def steam_dirs():
+    """Where Steam is installed: from the registry on Windows, the usual folders on Linux (incl. Flatpak)."""
+    if WINDOWS:
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam') as key:
+                return [winreg.QueryValueEx(key, 'SteamPath')[0]]
+        except OSError:
+            return []
+    home = os.path.expanduser('~')
+    flatpak = os.path.join(home, '.var', 'app', 'com.valvesoftware.Steam')
+    return [d for d in (os.path.join(home, '.steam', 'steam'), os.path.join(home, '.local', 'share', 'Steam'),
+                        os.path.join(flatpak, '.local', 'share', 'Steam'), os.path.join(flatpak, 'data', 'Steam'))
+            if os.path.isdir(d)]
+
+
 def find_game():
-    """Find the CS:S folder through Steam's registry key and library list."""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam') as key:
-            steam = winreg.QueryValueEx(key, 'SteamPath')[0]
-    except OSError:
-        return None
-    libs = [steam]
-    try:
-        with open(os.path.join(steam, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8') as f:
-            libs += [p.replace('\\\\', '\\') for p in re.findall(r'"path"\s+"([^"]+)"', f.read())]
-    except OSError:
-        pass
+    """Find the CS:S folder through Steam and its library list."""
+    libs = []
+    for steam in steam_dirs():
+        libs.append(steam)
+        try:
+            with open(os.path.join(steam, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8') as f:
+                libs += [p.replace('\\\\', '\\') for p in re.findall(r'"path"\s+"([^"]+)"', f.read())]
+        except OSError:
+            pass
     for lib in libs:
         game = os.path.join(lib, 'steamapps', 'common', 'Counter-Strike Source')
         if os.path.isfile(os.path.join(game, 'cstrike', 'gameinfo.txt')):
@@ -265,6 +281,7 @@ class Api:
                 self._maps.setdefault(f.stem.lower(), f)
         self._entries, self._current, self._pending = self._stock, None, {}  # pending: path -> dict, see _stage
         self._thumbs = {}  # (map, path) -> thumbnail; packed textures differ per map
+        self._loose = self._index_loose()
 
     # --- helpers -------------------------------------------------------------------------------------------
 
@@ -273,11 +290,22 @@ class Api:
         if path in self._vpk:
             info = self._vpk[path]
             return 'game', info.read, info.size
-        for source, base in (('cstrike folder', self._cstrike), ('download', os.path.join(self._cstrike, 'download'))):
-            f = Path(base, *path.split('/'))
-            if f.is_file():
-                return source, f.read_bytes, f.stat().st_size
+        hit = self._loose.get(path)
+        if hit:
+            source, f = hit
+            return source, Path(f).read_bytes, os.path.getsize(f)
         return None
+
+    def _index_loose(self):
+        """Lower-case 'materials/...' -> (source, file) for loose material files. Lets lookups ignore case like the
+        game does, which matters on Linux where file names are case-sensitive."""
+        found = {}
+        for source, base in (('download', os.path.join(self._cstrike, 'download')), ('cstrike folder', self._cstrike)):
+            for d, _, files in os.walk(os.path.join(base, 'materials')):  # cstrike/ comes last, so it wins
+                for name in files:
+                    full = os.path.join(d, name)
+                    found[os.path.relpath(full, base).replace(os.sep, '/').lower()] = (source, full)
+        return found
 
     # Profiles: changes made while a map is loaded belong to that map; changes under "All game textures" are
     # GLOBAL. The folder the game reads (texturechanger/materials) holds GLOBAL + the active map's, see _install.
@@ -642,7 +670,10 @@ class Api:
     @locked
     def open_mod(self):
         os.makedirs(self._mod, exist_ok=True)
-        os.startfile(self._mod)
+        if WINDOWS:
+            os.startfile(self._mod)
+        else:
+            subprocess.Popen(['xdg-open', self._mod])
         return {}
 
     @locked
@@ -678,7 +709,8 @@ def main():
                                    min_size=(1100, 760), background_color='#16171a')
     api._window = window
     window.events.closing += api._on_closing
-    window.events.shown += dark_title_bar
+    if WINDOWS:
+        window.events.shown += dark_title_bar
     webview.start()
 
 

@@ -22,10 +22,25 @@ Pick a map, click the texture you want to change, then click what to replace it 
 
 ## Install
 
+### Windows
+
 1. Download `texturechanger.exe` from the [latest release](https://github.com/teleqwe/texturechanger/releases/latest), or [build it yourself](#build-from-source).
 2. Run it. It finds Counter-Strike: Source through Steam automatically (or asks you where it is).
 
 Requires Windows 10/11 with the Microsoft Edge WebView2 runtime (already installed on Windows 11).
+
+### Linux (experimental)
+
+Linux support is new and not yet tested on a real Linux install, so please [open an issue](https://github.com/teleqwe/texturechanger/issues) if something doesn't work. It's for the native Linux version of CS:S; Steam is found in `~/.steam/steam`, `~/.local/share/Steam` or the Flatpak folder.
+
+```
+git clone https://github.com/teleqwe/texturechanger && cd texturechanger
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt "pywebview[qt]"
+python3 texturechanger.py
+```
+
+`pywebview[qt]` gives the window a Qt web view. If you'd rather use GTK, install your distro's WebKitGTK Python bindings instead (for example `python3-gi gir1.2-webkit2-4.1` on Debian/Ubuntu) and create the venv with `--system-site-packages`. To get a single binary, run `pip install pyinstaller` and `sh build.sh` (output: `dist/texturechanger`). Settings are kept in `~/.config/texturechanger/`.
 
 ## How to use
 
@@ -86,7 +101,7 @@ Switching the active map rebuilds `materials/` from the profiles using hard link
 
 ## Build from source
 
-Requires Python 3.12+ on Windows.
+Requires Python 3.12+. On Windows:
 
 ```
 pip install -r requirements.txt pyinstaller
@@ -94,12 +109,14 @@ python texturechanger.py                              # run from source
 powershell -ExecutionPolicy Bypass -File build.ps1    # run tests, build texturechanger.exe, copy it to the Desktop
 ```
 
+On Linux see [Linux](#linux-experimental); `build.sh` builds `dist/texturechanger`.
+
 | File | Purpose |
 | --- | --- |
 | `texturechanger.py` | Reads the game (VPKs, maps, VTFs), converts images, manages profiles and the active map |
 | `ui.html` | The interface (HTML/CSS/JS in a WebView2 window via pywebview) |
 | `test_texturechanger.py` | Checks texture conversion, material parsing and the `gameinfo.txt` line |
-| `build.ps1` | Builds the single-file exe with PyInstaller |
+| `build.ps1` / `build.sh` | Builds the single-file app with PyInstaller (Windows / Linux) |
 | `icon.ico` | App icon |
 
 Built with [srctools](https://github.com/TeamSpen210/srctools) (VPK / BSP / VTF), [Pillow](https://python-pillow.org/) and [pywebview](https://pywebview.flowrl.com/).

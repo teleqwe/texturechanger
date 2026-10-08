@@ -66,4 +66,22 @@ try:
 except ValueError:
     pass
 
+# Linux Steam discovery: ~/.local/share/Steam with the game in a second library listed in libraryfolders.vdf.
+import os, tempfile
+import texturechanger
+home = tempfile.mkdtemp()
+steam, lib = os.path.join(home, '.local', 'share', 'Steam'), os.path.join(home, 'games', 'SteamLibrary')
+os.makedirs(os.path.join(steam, 'steamapps'))
+os.makedirs(os.path.join(lib, 'steamapps', 'common', 'Counter-Strike Source', 'cstrike'))
+open(os.path.join(lib, 'steamapps', 'common', 'Counter-Strike Source', 'cstrike', 'gameinfo.txt'), 'w').close()
+with open(os.path.join(steam, 'steamapps', 'libraryfolders.vdf'), 'w') as f:
+    f.write('"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n\t"1"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n' % (steam, lib))
+was_windows, real_expanduser = texturechanger.WINDOWS, os.path.expanduser
+texturechanger.WINDOWS, os.path.expanduser = False, lambda p: p.replace('~', home, 1)
+try:
+    assert texturechanger.steam_dirs() == [steam]
+    assert texturechanger.find_game() == os.path.normpath(os.path.join(lib, 'steamapps', 'common', 'Counter-Strike Source'))
+finally:
+    texturechanger.WINDOWS, os.path.expanduser = was_windows, real_expanduser
+
 print('ok')
