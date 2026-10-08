@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CS:S Texture Changer</title>
+<style>
+:root {
+  --bg: #121316; --panel: #1b1d21; --panel-2: #22252a; --raised: #2a2d33; --line: #2e3137; --line-2: #3a3e45;
+  --text: #e8e9ec; --muted: #9298a1; --faint: #646a73;
+  --accent: #4d8dff; --accent-2: #6ea2ff; --accent-bg: rgba(77,141,255,.16);
+  --ok: #3fcf8e; --ok-bg: rgba(63,207,142,.13); --warn: #f2b84b; --warn-bg: rgba(242,184,75,.13);
+  --info: #6ea2ff; --info-bg: rgba(110,162,255,.14); --danger: #ff6464; --danger-bg: rgba(255,100,100,.12);
+  --radius: 12px; --tile: 120px;
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font); overflow: hidden; user-select: none; }
+button { font: inherit; color: inherit; }
+svg { flex: none; }
+[hidden] { display: none !important; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-thumb { background: #34373e; border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: #444851; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+.app { display: grid; grid-template-rows: 58px minmax(230px, 40%) 1fr; height: 100%; gap: 14px; padding: 0 16px 16px; }
+
+/* header */
+header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 0 16px; }
+.logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; margin-right: 10px; background: #4d8dff; }
+.tb { height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; border: 1px solid transparent;
+  background: none; color: var(--text); cursor: pointer; font-size: 13px; }
+.tb svg { color: var(--muted); }
+.tb:hover:not(:disabled) { background: var(--panel-2); border-color: var(--line); }
+.tb:hover:not(:disabled) svg { color: var(--text); }
+.tb:disabled { opacity: .35; cursor: default; }
+.tb.danger:hover:not(:disabled) { background: var(--danger-bg); border-color: rgba(255,100,100,.35); }
+.tb.danger:hover:not(:disabled) svg { color: var(--danger); }
+.vsep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+.apply { height: 34px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: white; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(77,141,255,.3); margin-left: 4px; }
+.apply:hover:not(:disabled) { background: var(--accent-2); }
+.apply:disabled { background: var(--raised); color: var(--faint); box-shadow: none; cursor: default; }
+.count { background: rgba(255,255,255,.25); border-radius: 999px; padding: 0 7px; font-size: 11.5px; }
+.spacer { flex: 1; }
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+.chip.on { color: var(--text); border-color: rgba(63,207,142,.35); background: var(--ok-bg); cursor: pointer; }
+.chip.on svg { color: var(--ok); }
+.chip b { font-weight: 600; }
+
+/* top: original | your texture */
+.previews { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; min-height: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.card-head { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); height: 48px; flex: none; white-space: nowrap; overflow: hidden; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .9px; color: var(--muted); padding-left: 4px; }
+.tex-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.meta { margin-left: auto; color: var(--muted); font: 12px var(--mono); padding-left: 8px; }
+.hbtns { display: flex; flex: none; border: 1px solid var(--line-2); border-radius: 8px; background: var(--raised); overflow: hidden; }
+.hbtns button { width: 34px; height: 30px; border: 0; background: none; color: var(--text); cursor: pointer; display: grid; place-items: center; }
+.hbtns button + button { border-left: 1px solid var(--line-2); }
+.hbtns button:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger); }
+.hbtns button:disabled { color: var(--faint); cursor: default; }
+.hbtns svg { width: 17px; height: 17px; }
+.pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.pill.Map { color: var(--warn); background: var(--warn-bg); }
+.pill.Game { color: var(--muted); background: rgba(255,255,255,.06); }
+.pill.Download, .pill.Loose { color: #c4a7ff; background: rgba(160,120,255,.13); }
+.pill.pending { color: var(--info); background: var(--info-bg); }
+.pill.applied { color: var(--ok); background: var(--ok-bg); }
+.mini { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  color: var(--warn); background: var(--warn-bg); border: 1px solid rgba(242,184,75,.3); }
+button.mini { cursor: pointer; }
+button.mini:hover { background: rgba(242,184,75,.22); }
+.stage { position: relative; flex: 1; min-height: 0; margin: 12px; border-radius: 9px; overflow: hidden;
+  background-color: #1f2126; background-image: conic-gradient(#272a30 25%, transparent 0 50%, #272a30 0 75%, transparent 0);
+  background-size: 22px 22px; display: grid; place-items: center; }
+.empty { color: var(--muted); text-align: center; padding: 20px; line-height: 1.7; }
+.empty .big { font-size: 14px; color: var(--text); font-weight: 600; }
+#mineStage { outline: 2px dashed transparent; outline-offset: -2px; transition: outline-color .15s; }
+#mineStage.drag { outline-color: var(--accent); background-color: #1c2333; }
+.tiled { position: absolute; inset: 0; margin: auto; background-repeat: repeat; background-position: 0 0; display: none; }
+.tiled.show { display: block; }
+.overlay { pointer-events: none; }
+.bar { position: absolute; bottom: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  background: rgba(18,19,22,.88); border: 1px solid var(--line-2); border-radius: 11px; box-shadow: 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; }
+.fitbar { right: 12px; }
+.cmpbar { left: 12px; padding-right: 10px; }
+.flabel { color: var(--muted); font-size: 11.5px; padding-left: 4px; }
+.seg { display: flex; background: var(--bg); border-radius: 8px; padding: 2px; flex: none; }
+.seg button { border: 0; background: none; color: var(--muted); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--accent); color: white; }
+.eye { width: 30px; height: 28px; border-radius: 7px; border: 0; background: var(--bg); color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.eye:hover { color: var(--text); }
+.eye.on { background: var(--accent); color: white; }
+.cmpbar input[type=range] { width: 96px; }
+.cmpbar input:disabled { opacity: .35; }
+
+/* map picker (button in the Original card + popover) */
+.field { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); min-width: 0; }
+.field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.field input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: inherit; }
+.field input::placeholder { color: var(--faint); }
+.map-btn { width: 230px; flex: none; cursor: pointer; color: var(--text); }
+.map-btn:hover { border-color: var(--line-2); }
+.map-btn .name { flex: 1; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.map-btn svg:first-child { color: var(--accent-2); }
+.map-pop { position: fixed; z-index: 30; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.55); padding: 8px; display: none; }
+.map-pop.open { display: block; }
+.map-list { max-height: min(380px, 45vh); overflow-x: hidden; overflow-y: auto; margin-top: 6px; }
+.map-item { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.map-item span { overflow: hidden; text-overflow: ellipsis; }
+.map-item.hl { background: var(--accent); color: white; }
+.map-item .act { margin-left: auto; color: var(--ok); display: flex; }
+.map-item .edited { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); flex: none; margin-left: auto; }
+.map-item .edited + .act { margin-left: 6px; }
+.map-item.hl .edited { background: white; }
+.map-item.hl .act { color: white; }
+.map-none { color: var(--faint); padding: 8px 9px; }
+
+/* bottom: textures to edit | replace with */
+.bottom { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.browser-head { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 48px; border-bottom: 1px solid var(--line); white-space: nowrap; flex: none; }
+.grow { flex: 1; }
+.icon-toggle { width: 32px; height: 32px; flex: none; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.icon-toggle:hover { color: var(--text); border-color: var(--line-2); }
+.icon-toggle.on { color: var(--accent-2); border-color: rgba(77,141,255,.5); background: var(--accent-bg); }
+.zoom { display: flex; align-items: center; gap: 6px; color: var(--muted); flex: none; margin-right: 10px; }
+.browser-head .field { flex: 0 1 170px; }
+.tgl { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; flex: none; }
+.tgl:hover { color: var(--text); }
+.tgl.on { color: white; background: var(--accent); border-color: var(--accent); }
+input[type=range] { width: 90px; accent-color: var(--accent); }
+.grid { flex: 1; overflow: auto; padding: 0 12px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr)); gap: 8px; align-content: start; outline: none; }
+.group { grid-column: 1 / -1; position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 4px 6px; background: var(--panel);
+  color: var(--muted); font-size: 12px; font-weight: 600; }
+.group .n { color: var(--faint); font-weight: 400; }
+.cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); flex: none; }
+.tile { border-radius: 10px; padding: 6px; cursor: pointer; border: 1px solid transparent; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto calc(var(--tile) + 40px); }
+.tile:hover { background: var(--panel-2); }
+.tile.sel { background: var(--accent-bg); border-color: var(--accent); }
+.thumb { position: relative; aspect-ratio: 1; border-radius: 7px; overflow: hidden; display: grid; place-items: center;
+  background-color: #1f2126; background-image: conic-gradient(#272a30 25%, transparent 0 50%, #272a30 0 75%, transparent 0); background-size: 14px 14px; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; opacity: 0; transition: opacity .15s; }
+.thumb img.ok { opacity: 1; }
+.thumb.upl { background: var(--bg); border: 1.5px dashed var(--line-2); color: var(--accent-2); }
+.tile.upload:hover .thumb.upl { border-color: var(--accent); background: var(--accent-bg); }
+.dot { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: white; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.dot.applied { background: var(--ok); }
+.dot.pending { background: var(--accent); width: 12px; height: 12px; border: 2px solid white; top: 8px; right: 8px; }
+.tlabel { margin-top: 5px; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.tdim { font: 10px var(--mono); color: var(--faint); text-align: center; height: 13px; }
+.placeholder { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 40px; }
+
+/* modal + toast + splash */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; place-items: center; z-index: 50; }
+.backdrop.open { display: grid; }
+.modal { width: 430px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.modal h3 { margin: 0 0 8px; font-size: 16px; }
+.modal p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; white-space: pre-line; word-break: break-word; }
+.modal .mrow { display: flex; justify-content: flex-end; gap: 8px; }
+.mbtn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--raised); cursor: pointer; }
+.mbtn:hover { border-color: var(--muted); }
+.mbtn.go { background: var(--accent); border-color: var(--accent); color: white; }
+.mbtn.go.danger { background: #d94a4a; border-color: #d94a4a; }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); opacity: 0; transition: .2s; z-index: 60; max-width: 620px; pointer-events: none;
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 16px; box-shadow: 0 16px 40px rgba(0,0,0,.5); display: flex; gap: 9px; align-items: flex-start; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.ok svg { color: var(--ok); } .toast.error svg { color: var(--danger); } .toast.warn svg { color: var(--warn); }
+.splash { position: fixed; inset: 0; background: var(--bg); display: grid; place-items: center; z-index: 40; }
+.splash .box { text-align: center; color: var(--muted); }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--accent); animation: spin .8s linear infinite; margin: 0 auto 14px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo" title="CS:S Texture Changer"><span data-i="swapSmall"></span></div>
+    <div class="chip" id="activeChip"></div>
+    <button class="tb" id="openFolder" title="Open the mod folder"><span data-i="folderOpen"></span></button>
+    <div class="spacer"></div>
+    <div class="zoom" title="Tile size"><span data-i="image"></span><input type="range" id="zoom" min="80" max="200" value="120"></div>
+    <button class="tb danger" id="restoreAllBtn" disabled title="Put every texture you changed on this map (or all global changes) back to the original"><span data-i="undo"></span>Restore all</button>
+    <button class="tb" id="exportBtn" disabled title="Save the original texture as a PNG"><span data-i="download"></span>Export</button>
+    <div class="vsep"></div>
+    <button class="apply" id="applyBtn" disabled title="Save your changes (restart CS:S to see them)"><span data-i="check"></span>Apply<span class="count" id="applyCount" hidden></span></button>
+  </header>
+
+  <section class="previews">
+    <div class="card">
+      <div class="card-head">
+        <button class="field map-btn map-anchor" id="mapBtn" title="Choose a map"><span data-i="map"></span><span class="name" id="mapName">All game textures</span><span data-i="chevDown"></span></button>
+        <span class="tex-name" id="texName"></span><span id="srcPill"></span><span class="meta" id="origMeta"></span>
+        <div class="hbtns" id="selBtns" hidden><button id="clearSel" title="Deselect this texture"><span data-i="x"></span></button></div>
+      </div>
+      <div class="stage" id="origStage"><div class="tiled" id="origTiles"></div><div class="empty" id="origEmpty"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="label">YOUR TEXTURE</span><span id="mineBadges" style="display:flex;gap:6px;align-items:center"></span><span class="meta" id="mineMeta"></span>
+        <div class="hbtns" id="mineBtns" hidden>
+          <button id="restoreBtn" title="Restore the original (deletes your applied replacement)"><span data-i="undo"></span></button>
+          <button id="discardX" title="Remove this change (not applied yet)"><span data-i="x"></span></button></div></div>
+      <div class="stage" id="mineStage"><div class="tiled" id="mineTiles"></div><div class="tiled overlay" id="overlay"></div><div class="empty" id="mineEmpty"></div>
+        <div class="bar cmpbar" id="cmpbar" hidden>
+          <button class="eye" id="eyeBtn" title="Show the original on top, at its real size compared to yours"></button>
+          <input type="range" id="opacity" min="5" max="100" value="50" title="Opacity of the original"></div>
+        <div class="bar fitbar" id="fitbar" hidden>
+          <span class="flabel" title="How big it shows in game. 2× is twice as big, so it repeats half as often.">Size</span>
+          <div class="seg" id="scaleSeg"><button data-v="0" id="asIs" title="Use the .vtf file exactly as it is">As is</button><button data-v="1">1×</button><button data-v="2">2×</button><button data-v="4">4×</button><button data-v="8">8×</button></div>
+          <span class="flabel">Fit</span>
+          <div class="seg" id="cropSeg"><button data-v="0" title="Stretch the image to the texture's shape">Stretch</button><button data-v="1" title="Crop the image so it isn't squashed">Crop</button></div>
+        </div></div>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="panel">
+      <div class="browser-head">
+        <div class="field"><span data-i="search"></span><input id="filter" placeholder="Search" spellcheck="false"></div>
+        <button class="tgl" id="changedOnly" title="Only show textures you changed">Changed only</button>
+        <div class="spacer"></div>
+        <div class="seg" id="sortSeg" title="Sort"><button data-v="az">A–Z</button><button data-v="changed">Changed first</button></div>
+      </div>
+      <div class="grid" id="grid" tabindex="0"></div>
+    </div>
+    <div class="panel">
+      <div class="browser-head">
+        <div class="field"><span data-i="search"></span><input id="pFilter" placeholder="Search" spellcheck="false"></div>
+        <div class="seg" id="srcSeg" title="Pick from base game textures or the loaded map's"><button data-v="game">Game</button><button data-v="map">This map</button></div>
+        <div class="spacer"></div>
+        <div class="seg" id="pSortSeg" title="Sort"><button data-v="az">A–Z</button><button data-v="changed">Changed first</button></div>
+      </div>
+      <div class="grid" id="pGrid" tabindex="0"></div>
+    </div>
+  </section>
+</div>
+
+<div class="map-pop" id="mapPop">
+  <div class="field"><span data-i="search"></span><input id="mapSearch" placeholder="Search maps" spellcheck="false"></div>
+  <div class="map-list" id="mapList"></div>
+</div>
+<div class="backdrop" id="modal"><div class="modal"><h3 id="mTitle"></h3><p id="mText"></p><div class="mrow" id="mButtons"></div></div></div>
+<div class="toast" id="toast"></div>
+<div class="splash" id="splash"><div class="box"><div class="spinner"></div><div id="splashText">Loading game files…</div></div></div>
+
+<script>
+const I = {
+  folder: '<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#c9962b" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.2l2 2.2h6.8A2.5 2.5 0 0 1 21 8.7V10H3z"/><path fill="#e9b949" d="M2.2 10.2A1.5 1.5 0 0 1 3.7 9h16.9a1.5 1.5 0 0 1 1.5 1.8l-1.3 7.4a2.2 2.2 0 0 1-2.2 1.8H5.4a2.2 2.2 0 0 1-2.2-1.8z"/></svg>',
+  bigFolder: '<svg width="58%" height="58%" viewBox="0 0 24 24"><path fill="#c9962b" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.2l2 2.2h6.8A2.5 2.5 0 0 1 21 8.7V10H3z"/><path fill="#e9b949" d="M2.2 10.2A1.5 1.5 0 0 1 3.7 9h16.9a1.5 1.5 0 0 1 1.5 1.8l-1.3 7.4a2.2 2.2 0 0 1-2.2 1.8H5.4a2.2 2.2 0 0 1-2.2-1.8z"/></svg>',
+  bigUp: '<svg width="44%" height="44%" viewBox="0 0 24 24" fill="none" stroke="#9298a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+  folderOpen: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4l2 2h7A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>',
+  chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  chevDown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  swapSmall: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>',
+  swap: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>',
+  map: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>',
+  search: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  tick: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  image: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
+  grid: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>',
+  upload: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>',
+  eye: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.4 3.3M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/></svg>',
+  x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  undo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
+  pin: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg>',
+  warn: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  ok: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+  error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
+};
+document.querySelectorAll('[data-i]').forEach(el => el.outerHTML = I[el.dataset.i]);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const base = p => p.slice(p.lastIndexOf('/') + 1).replace(/\.vtf$/, '');
+const S = { maps: [], active: null, map: null, seq: 0, mapHl: 0, mapItems: [], last: null, profiles: [], own: 0,
+  pickSrc: 'game', gameFiles: null };
+const thumbCache = new Map();  // `${map}|${path}` -> {url, w, h}; base game textures use map ''
+let api;
+
+async function call(name, ...args) {
+  const res = await api[name](...args);
+  if (res && res.error) { toast(res.error, 'error'); return null; }
+  return res;
+}
+
+/* ---------- texture grid: every texture at once, grouped by folder ---------- */
+function Browser({ grid, onSelect, onActivate, uploadTile }) {
+  const B = { files: [], byPath: new Map(), sel: null, filter: '', changed: false, sort: 'az', stock: false, queue: [], pumping: false,
+    extra: [] };  // extra: changes saved on other maps, shown on top with "Changed first" (left grid only)
+  const scope = () => B.stock ? '' : (S.map || '');
+  const tileEl = path => grid.querySelector(`.tile[data-path="${CSS.escape(path)}"]`);
+  const dirOf = p => p.slice(0, p.lastIndexOf('/'));
+  const rank = f => f[3] === 'pending' ? 0 : f[3] === 'applied' ? 1 : 2;
+
+  B.load = files => { B.files = files; B.byPath = new Map(files.map(f => [f[0], f])); B.sel = null; };
+  B.update = files => { const sel = B.sel; B.load(files); B.sel = sel; };  // same files, new statuses
+
+  B.tileHTML = f => {
+    const [path, , , status] = f;
+    const t = thumbCache.get(scope() + '|' + path);
+    return `<div class="tile${B.sel === path ? ' sel' : ''}" data-kind="file" data-path="${esc(path)}" title="${esc(path.slice(10))}" draggable="true">
+      <div class="thumb"><img${t ? ` class="ok" src="${t.url}"` : ''} alt="">${status ? `<span class="dot ${status}" title="${status === 'pending' ? 'Not applied' : 'Applied'}">${status === 'applied' ? I.tick : ''}</span>` : ''}</div>
+      <div class="tlabel">${esc(base(path))}</div><div class="tdim">${t ? `${t.w}×${t.h}` : ''}</div></div>`;
+  };
+  const groupHTML = (dir, files) => `<div class="group" data-dir="${esc(dir)}">${files.some(f => f[3]) ? '<span class="cdot" title="Has changed textures"></span>' : ''}${esc(dir.slice(10) || 'materials')}<span class="n">${files.length}</span></div>`;
+
+  const sectionHTML = (title, n = '') => `<div class="group" data-dir="">${esc(title)}<span class="n">${n}</span></div>`;
+  B.render = (keepScroll = false) => {
+    const top = grid.scrollTop;
+    const words = B.filter.toLowerCase().split(/\s+/).filter(Boolean);
+    const match = p => words.every(w => p.includes(w));
+    const out = uploadTile ? [sectionHTML('Custom'), `<div class="tile upload" data-kind="upload" title="Use an image or .vtf from your PC"><div class="thumb upl">${I.upload}</div><div class="tlabel">Upload file</div><div class="tdim"></div></div>`] : [];
+    const changedFirst = B.sort === 'changed';
+    let shown = 0;
+    if (changedFirst) {  // everything changed goes on top, whatever folder (or map) it's from
+      const changed = B.files.filter(f => f[3] && match(f[0])).sort((a, b) => rank(a) - rank(b));
+      const others = B.extra.filter(c => match(c.path) || match(c.map));
+      // sections named after the map the changes belong to (the right grid just says Changed)
+      const here = uploadTile ? 'Changed' : (S.map || 'All game textures');
+      if (changed.length) { out.push(sectionHTML(here, changed.length)); changed.forEach(f => out.push(B.tileHTML(f))); }
+      const maps = [...new Set(others.map(c => c.map))];
+      for (const map of maps) {
+        const mine = others.filter(c => c.map === map);
+        out.push(sectionHTML(map, mine.length));
+        mine.forEach(c => out.push(`<div class="tile" data-kind="jump" data-map="${esc(c.map)}" data-path="${esc(c.path)}" title="${esc(c.path.slice(10))} on ${esc(c.map)}: click to open that map">
+          <div class="thumb">${c.thumb ? `<img class="ok" src="${c.thumb.url}" alt="">` : ''}<span class="dot applied">${I.tick}</span></div>
+          <div class="tlabel">${esc(base(c.path))}</div><div class="tdim">${c.thumb ? `${c.thumb.w}×${c.thumb.h}` : ''}</div></div>`));
+      }
+      shown += changed.length + others.length;
+    }
+    const groups = new Map();
+    for (const f of B.files) {
+      if ((B.changed && !f[3]) || (changedFirst && f[3]) || !match(f[0])) continue;
+      const d = dirOf(f[0]);
+      (groups.get(d) || groups.set(d, []).get(d)).push(f);
+    }
+    const dirs = [...groups.keys()].sort();
+    for (const d of dirs) { out.push(groupHTML(d, groups.get(d))); for (const f of groups.get(d)) out.push(B.tileHTML(f)); shown++; }
+    if (!shown) out.push(`<div class="placeholder">${B.files.length ? 'Nothing matches' : 'No textures'}</div>`);
+    grid.innerHTML = out.join('');
+    grid.scrollTop = keepScroll ? top : 0;
+    observe();
+    if (!keepScroll) { const sel = grid.querySelector('.tile.sel'); if (sel) sel.scrollIntoView({ block: 'nearest' }); }
+  };
+
+  const mark = tile => { grid.querySelectorAll('.tile.sel').forEach(t => t.classList.remove('sel')); if (tile) tile.classList.add('sel'); };
+  B.highlight = path => { B.sel = path; const t = path && tileEl(path); mark(t); if (t) t.scrollIntoView({ block: 'nearest' }); };
+  B.select = path => { B.highlight(path); onSelect(path); };
+  B.updateFile = f => {  // redraw one tile and its folder's dot after its status changed
+    B.byPath.set(f[0], f);
+    if (B.sort === 'changed') return B.render(true);  // it may need to move into / out of the Changed section
+    const t = tileEl(f[0]); if (!t) return;
+    const sel = t.classList.contains('sel'); t.outerHTML = B.tileHTML(f);
+    if (sel) tileEl(f[0]).classList.add('sel');
+    const d = dirOf(f[0]), g = grid.querySelector(`.group[data-dir="${CSS.escape(d)}"]`);
+    if (g) g.outerHTML = groupHTML(d, B.files.filter(x => dirOf(x[0]) === d));
+  };
+
+  /* lazy thumbnails: only tiles that scroll into view are requested, in small batches */
+  const observer = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting) { observer.unobserve(e.target); B.queue.push(e.target.dataset.path); }
+    pump();
+  }, { root: grid, rootMargin: '300px' });
+  function observe() {
+    observer.disconnect(); B.queue = [];
+    grid.querySelectorAll('.tile[data-kind="file"] img:not(.ok)').forEach(img => observer.observe(img.closest('.tile')));
+  }
+  async function pump() {
+    if (B.pumping) return;
+    B.pumping = true;
+    while (B.queue.length) {
+      const sc = scope(), batch = B.queue.splice(0, 16);
+      const r = await call('thumbs', batch, B.stock);
+      if (!r || sc !== scope()) break;
+      for (const [path, t] of Object.entries(r)) {
+        if (!t) continue;
+        thumbCache.set(sc + '|' + path, t);
+        const tile = tileEl(path); if (!tile) continue;
+        const img = tile.querySelector('img'); img.src = t.url; img.classList.add('ok');
+        tile.querySelector('.tdim').textContent = `${t.w}×${t.h}`;
+      }
+    }
+    B.pumping = false;
+  }
+
+  grid.addEventListener('click', e => {
+    const tile = e.target.closest('.tile'); if (!tile) return;
+    grid.focus();
+    if (tile.dataset.kind === 'upload') upload();
+    else if (tile.dataset.kind === 'jump') openChange(tile.dataset.map, tile.dataset.path);
+    else B.select(tile.dataset.path);
+  });
+  grid.addEventListener('dblclick', e => {
+    const tile = e.target.closest('.tile[data-kind="file"]'); if (tile) onActivate(tile.dataset.path);
+  });
+  grid.addEventListener('dragstart', e => {  // drag a texture onto "Your texture" to use it
+    const tile = e.target.closest('.tile[data-kind="file"]'); if (!tile) return;
+    e.dataTransfer.setData('text/x-texture', JSON.stringify({ path: tile.dataset.path, game: B.stock }));
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  grid.addEventListener('keydown', e => {  // arrows move between tiles, also across folder groups
+    const all = [...grid.querySelectorAll('.tile[data-kind="file"]')]; if (!all.length) return;
+    let i = all.findIndex(t => t.classList.contains('sel'));
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault(); i = Math.max(0, Math.min(all.length - 1, i < 0 ? 0 : i + (e.key === 'ArrowRight' ? 1 : -1)));
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (i < 0) i = 0;
+      else {
+        const cur = all[i], down = e.key === 'ArrowDown';
+        const rows = all.filter(t => down ? t.offsetTop > cur.offsetTop : t.offsetTop < cur.offsetTop);
+        if (!rows.length) return;
+        const rowTop = down ? Math.min(...rows.map(t => t.offsetTop)) : Math.max(...rows.map(t => t.offsetTop));
+        const row = rows.filter(t => t.offsetTop === rowTop);
+        const best = row.reduce((a, b) => Math.abs(b.offsetLeft - cur.offsetLeft) < Math.abs(a.offsetLeft - cur.offsetLeft) ? b : a);
+        i = all.indexOf(best);
+      }
+    } else if (e.key === 'Enter' && i >= 0) { onActivate(all[i].dataset.path); return; }
+    else return;
+    B.select(all[i].dataset.path);
+  });
+  return B;
+}
+
+/* left: textures of the loaded map to edit; right: what to replace the selected one with */
+const M = Browser({ grid: $('grid'), onSelect: path => preview(path), onActivate: () => {} });
+const P = Browser({ grid: $('pGrid'), onSelect: path => useTexture(path), onActivate: () => {}, uploadTile: true });
+P.stock = true;
+
+/* ---------- startup ---------- */
+window.addEventListener('pywebviewready', async () => {
+  api = window.pywebview.api;
+  const init = await call('init');
+  if (!init) return;
+  if (init.needGame) return needGame();
+  S.maps = init.maps; S.active = init.active; S.profiles = init.profiles || [];
+  const st = init.settings || {};
+  Object.assign(cmp, st.compare);
+  M.sort = st.sort || 'az';
+  P.sort = st.pSort || 'az';
+  S.pickSrc = st.pickSrc || 'game';
+  renderCompare(); renderSegs();
+  await loadMap(null);
+  $('splash').style.display = 'none';
+  if (init.toast) toast(init.toast, 'warn');
+});
+
+function needGame() {
+  document.querySelector('.spinner').style.display = 'none';
+  $('splashText').innerHTML = 'Couldn’t find Counter-Strike: Source.<br><br><button class="mbtn go" id="pickGame">Locate the “Counter-Strike Source” folder…</button>';
+  $('pickGame').onclick = async () => { const r = await call('pick_game'); if (r && r.ok) location.reload(); };
+}
+
+const pendingCount = () => M.files.filter(f => f[3] === 'pending').length;
+
+async function loadMap(name) {
+  await flushFit();
+  $('grid').innerHTML = '<div class="placeholder">Loading…</div>';
+  const r = await call('load', name || '');
+  if (!r) return;
+  S.map = r.map; S.active = r.active; S.own = r.own;
+  M.load(r.files);
+  $('mapName').textContent = S.map || 'All game textures';
+  $('filter').value = ''; M.filter = ''; M.changed = false; $('changedOnly').classList.remove('on');
+  M.extra = [];
+  renderChip(); M.render(); renderPreview(null); renderApply();
+  loadPicker(); refreshOtherChanges();
+}
+
+async function loadPicker() {
+  if (S.pickSrc === 'game') {
+    if (!S.gameFiles) { $('pGrid').innerHTML = '<div class="placeholder">Loading…</div>'; const r = await call('game_textures'); if (!r) return; S.gameFiles = r.files; }
+    P.stock = true; P.load(S.gameFiles.map(f => [f[0], f[1], f[2], (M.byPath.get(f[0]) || [])[3] || '']));
+  } else {
+    P.stock = false; P.load(M.files.map(f => [...f]));
+  }
+  P.sel = S.last && S.last.mine && S.last.mine.srcPath;
+  P.render();
+}
+
+/* ---------- header ---------- */
+function renderChip() {
+  const c = $('activeChip');
+  c.className = 'chip' + (S.active ? ' on' : '');
+  c.innerHTML = S.active ? `${I.pin}<b>${esc(S.active)}</b>` : `${I.pin}No active map`;
+  c.title = S.active ? `Active map: ${S.active}. Its saved changes are in the game (plus your global ones). Click to open it.`
+                     : 'No active map: only your global changes are in the game. Applying a change on a map makes it active.';
+}
+$('activeChip').onclick = () => { if (S.active && S.active !== S.map) loadMap(S.active); };
+$('openFolder').onclick = () => call('open_mod');
+function renderApply() {
+  const n = pendingCount();
+  $('applyBtn').disabled = !n;
+  $('applyCount').hidden = n < 2;
+  $('applyCount').textContent = n;
+  $('restoreAllBtn').disabled = !S.own;
+}
+
+/* ---------- filters, sorting, picker source, tile size ---------- */
+let filterTimer, pFilterTimer;
+$('filter').addEventListener('input', () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { M.filter = $('filter').value.trim(); M.render(); }, 150);
+});
+$('pFilter').addEventListener('input', () => {
+  clearTimeout(pFilterTimer);
+  pFilterTimer = setTimeout(() => { P.filter = $('pFilter').value.trim(); P.render(); }, 150);
+});
+$('changedOnly').onclick = () => { M.changed = !M.changed; $('changedOnly').classList.toggle('on', M.changed); M.render(); };
+function renderSegs() {
+  $('sortSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === M.sort));
+  $('pSortSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === P.sort));
+  $('srcSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === S.pickSrc));
+}
+$('sortSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; M.sort = b.dataset.v; renderSegs(); M.render(); refreshOtherChanges(); saveSettings(); };
+async function refreshOtherChanges() {  // changes on other maps, listed on top with "Changed first"
+  if (M.sort !== 'changed') return;
+  const r = await call('other_changes');
+  if (r) { M.extra = r.changes; M.render(true); }
+}
+async function openChange(map, path) {
+  await loadMap(map);
+  if (M.byPath.has(path)) M.select(path);
+}
+$('pSortSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; P.sort = b.dataset.v; renderSegs(); P.render(); saveSettings(); };
+$('srcSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.pickSrc = b.dataset.v; renderSegs(); loadPicker(); saveSettings(); };
+$('zoom').addEventListener('input', () => document.documentElement.style.setProperty('--tile', $('zoom').value + 'px'));
+
+/* ---------- map picker ---------- */
+function renderMaps() {
+  const q = $('mapSearch').value.trim().toLowerCase();
+  const edited = new Set(S.profiles);  // maps with saved changes come first
+  const items = S.maps.filter(m => m.includes(q)).sort((a, b) =>
+    (!edited.has(a)) - (!edited.has(b)) || (!a.startsWith(q)) - (!b.startsWith(q)) || a.localeCompare(b));
+  S.mapItems = (q ? [] : ['']).concat(items.slice(0, 400));
+  S.mapHl = Math.min(S.mapHl, Math.max(0, S.mapItems.length - 1));
+  $('mapList').innerHTML = S.mapItems.map((m, i) => `<div class="map-item${i === S.mapHl ? ' hl' : ''}" data-n="${i}">
+    ${m ? I.map : I.folder}<span>${m ? esc(m) : 'All game textures'}</span>${edited.has(m) ? '<span class="edited" title="Has saved changes"></span>' : ''}${m && m === S.active ? `<span class="act" title="Active map">${I.pin}</span>` : ''}</div>`).join('')
+    || '<div class="map-none">No maps match</div>';
+  const hl = $('mapList').querySelector('.hl'); if (hl) hl.scrollIntoView({ block: 'nearest' });
+}
+function openMaps() {
+  const pop = $('mapPop'), r = $('mapBtn').getBoundingClientRect();
+  pop.style.left = r.left + 'px'; pop.style.width = Math.max(r.width, 340) + 'px';
+  pop.classList.add('open'); $('mapSearch').value = ''; S.mapHl = 0; renderMaps();
+  pop.style.top = Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8) + 'px';
+  $('mapSearch').focus();
+}
+function closeMaps() { $('mapPop').classList.remove('open'); }
+function pickMap(i) { const m = S.mapItems[i]; if (m === undefined) return; closeMaps(); loadMap(m || null); }
+$('mapBtn').onclick = () => $('mapPop').classList.contains('open') ? closeMaps() : openMaps();
+$('mapSearch').addEventListener('input', () => { S.mapHl = 0; renderMaps(); });
+$('mapSearch').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.mapHl = Math.max(0, Math.min(S.mapItems.length - 1, S.mapHl + (e.key === 'ArrowDown' ? 1 : -1))); renderMaps(); }
+  else if (e.key === 'Enter') pickMap(S.mapHl);
+  else if (e.key === 'Escape') closeMaps();
+});
+$('mapList').addEventListener('mousedown', e => { const it = e.target.closest('.map-item'); if (it) pickMap(+it.dataset.n); });
+document.addEventListener('mousedown', e => { if (!e.target.closest('.map-pop, .map-anchor')) closeMaps(); });
+
+/* ---------- preview + actions ---------- */
+async function preview(path) {
+  await flushFit();
+  const seq = ++S.seq;
+  const r = await call('preview', path);
+  if (seq === S.seq && r) renderPreview(r);
+}
+
+function renderPreview(r) {
+  const has = !!r, mine = r && r.mine;
+  S.last = r;
+  S.fit = mine ? { scale: mine.scale, crop: mine.crop } : null;
+  $('origEmpty').style.display = r && r.orig ? 'none' : '';
+  $('origEmpty').innerHTML = r && r.origError ? `<div class="big">Preview failed</div>${esc(r.origError)}`
+    : r ? '' : `<div class="big">${S.map ? 'Pick a texture below to edit' : 'Choose a map from the dropdown'}</div>`;
+  $('texName').textContent = r ? base(r.path) : '';
+  $('srcPill').innerHTML = r ? `<span class="pill ${r.source}">${r.source}</span>` : '';
+  $('origMeta').textContent = r && r.orig ? `${r.orig.w} × ${r.orig.h}` : '';
+  $('selBtns').hidden = !has;
+  $('mineBtns').hidden = !mine;
+  $('mineEmpty').style.display = mine ? 'none' : '';
+  $('mineEmpty').innerHTML = has ? '<div class="big">Pick a replacement on the right</div>or drop a file here · double-click to upload' : '';
+  if (!mine) $('mineMeta').textContent = r && r.mineError ? 'preview failed' : '';
+  $('fitbar').hidden = $('cmpbar').hidden = !mine;
+  if (mine) $('asIs').hidden = !mine.vtfFile;
+  $('exportBtn').disabled = !has;
+  $('restoreBtn').disabled = !(r && r.canRestore);
+  renderBadges();
+  if (r) setStatus(r.path, mine ? mine.state : '');
+  P.highlight(mine && mine.srcPath);
+  renderStages();
+}
+
+function renderBadges() {
+  const r = S.last, mine = r && r.mine;
+  let badges = mine ? `<span class="pill ${mine.state}"${r.global && mine.state === 'applied' ? ' title="Made under All game textures, so it applies on every map"' : ''}>${
+    mine.state === 'pending' ? 'Not applied' : r.global ? 'Applied · global' : 'Applied'}</span>` : '';
+  if (r && r.inactive && (!mine || mine.state === 'applied')) badges += `<button class="mini" id="activate" title="Each map keeps its own changes; only the active map's are in the game">${I.warn}Map not active · Activate</button>`;
+  if (r && r.others.length) badges += `<span class="mini" title="${esc(r.others.join(', '))} also replaces this texture. Only one will be used.">${I.warn}Also in ${esc(r.others[0])}</span>`;
+  $('mineBadges').innerHTML = badges;
+  if ($('activate')) $('activate').onclick = async () => {
+    const res = await call('set_active', r.map);
+    if (res) { S.active = res.active; renderChip(); toast(`${r.map} is now the active map. Restart CS:S to see it.`, 'ok'); preview(M.sel); }
+  };
+  $('discardX').disabled = !(mine && mine.state === 'pending');
+}
+
+function setStatus(path, status) {
+  const f = M.byPath.get(path); if (!f || f[3] === status) return;
+  f[3] = status;
+  M.updateFile(f);
+  renderApply();
+}
+
+/* Both cards are drawn in the page (no Python round trip), so Size/Fit clicks are instant.
+   The original always shows once. On yours, the original can be laid over it at its real relative size: the game sizes
+   a texture on walls by its pixel size, so one copy of a 4x replacement covers 4 x 4 copies of the original. */
+let paintSeq = 0;
+const cmp = { on: false, opacity: 0.5 };  // filled from the saved settings at startup
+let saveTimer;
+function targetSize(o, m, scale) {
+  if (!scale) return m.asIs;
+  let k = scale;
+  while (k > 1 && Math.max(o.w, o.h) * k > 4096) k /= 2;
+  return { w: o.w * k, h: o.h * k };
+}
+function cropTo(m, aspect) {  // centre-crop the source to `aspect` (w/h) once, in a canvas
+  m.crops = m.crops || {};
+  const key = aspect.toFixed(4);
+  return m.crops[key] = m.crops[key] || new Promise(done => {
+    const im = new Image();
+    im.onload = () => {
+      let w = im.width, h = im.height;
+      if (w / h > aspect) w = Math.round(h * aspect); else h = Math.round(w / aspect);
+      const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h);
+      c.getContext('2d').drawImage(im, (im.width - w) / 2, (im.height - h) / 2, w, h, 0, 0, w, h);
+      done(c.toDataURL());
+    };
+    im.src = m.src;
+  });
+}
+function paint(stage, el, boxW, boxH, url, pctX, pctY, texPx) {
+  const k = Math.min(stage.clientWidth / boxW, stage.clientHeight / boxH), bw = boxW * k;
+  el.style.width = bw + 'px'; el.style.height = boxH * k + 'px';
+  if (el.dataset.url !== url) { el.style.backgroundImage = `url("${url}")`; el.dataset.url = url; }
+  el.style.backgroundSize = `${pctX}% ${pctY}%`;
+  el.style.imageRendering = bw * pctX / 100 > texPx * 1.5 ? 'pixelated' : 'auto';
+  el.classList.add('show');
+}
+async function renderStages() {
+  const r = S.last, seq = ++paintSeq;
+  if (!r || !r.orig) { ['origTiles', 'mineTiles', 'overlay'].forEach(id => $(id).classList.remove('show')); return; }
+  const o = r.orig, origPx = Math.min(o.w, 1024);
+  paint($('origStage'), $('origTiles'), o.w, o.h, o.url, 100, 100, origPx);
+  const m = r.mine;
+  if (!m) { $('mineTiles').classList.remove('show'); $('overlay').classList.remove('show'); return; }
+  const f = S.fit, t = targetSize(o, m, f.scale);
+  $('mineMeta').textContent = `${t.w} × ${t.h}`;
+  $('scaleSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === (f.scale || 0)));
+  $('cropSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', !!+b.dataset.v === f.crop));
+  const srcAspect = m.asIs.w / m.asIs.h, sameShape = Math.abs(srcAspect - t.w / t.h) < 0.01 * srcAspect;
+  $('cropSeg').style.opacity = f.scale && !sameShape ? '' : '.35';
+  $('cropSeg').title = !f.scale ? 'Fit only applies when resizing (not As is)'
+    : sameShape ? 'Your image is already the same shape as the texture, so Stretch and Crop look the same' : '';
+  const url = f.scale && f.crop ? await cropTo(m, t.w / t.h) : m.src;
+  if (seq !== paintSeq) return;  // a newer click already drew
+  paint($('mineStage'), $('mineTiles'), t.w, t.h, url, 100, 100, Math.min(m.asIs.w, 768));
+  paint($('mineStage'), $('overlay'), t.w, t.h, o.url, 100 * o.w / t.w, 100 * o.h / t.h, origPx);
+  renderCompare();
+}
+function renderCompare() {
+  $('eyeBtn').innerHTML = cmp.on ? I.eye : I.eyeOff;
+  $('eyeBtn').classList.toggle('on', cmp.on);
+  $('opacity').value = Math.round(cmp.opacity * 100);
+  $('opacity').disabled = !cmp.on;
+  $('overlay').style.opacity = cmp.on ? cmp.opacity : 0;
+}
+function saveSettings() {  // kept between launches
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => call('save_settings', { compare: cmp, sort: M.sort, pSort: P.sort, pickSrc: S.pickSrc }), 400);
+}
+$('eyeBtn').onclick = () => { cmp.on = !cmp.on; renderCompare(); saveSettings(); };
+$('opacity').addEventListener('input', () => { cmp.opacity = $('opacity').value / 100; renderCompare(); saveSettings(); });
+new ResizeObserver(() => renderStages()).observe($('origStage'));
+
+/* Size/Fit: redraw right away, tell Python once clicking stops (it only stores the numbers; Apply does the work). */
+let fitTimer = null, fitDirty = null;
+function setFit(scale, crop) {
+  const r = S.last; if (!r || !r.mine) return;
+  if (!scale && !r.mine.vtfFile) scale = 1;
+  S.fit = { scale, crop };
+  fitDirty = { path: r.path, scale, crop };
+  const sv = r.mine.saved;  // what's applied: going back to it isn't a change
+  const state = sv && (sv.scale || 0) === (scale || 0) && sv.crop === crop ? 'applied' : 'pending';
+  if (r.mine.state !== state) { r.mine.state = state; renderBadges(); setStatus(r.path, state); }
+  renderStages();
+  clearTimeout(fitTimer); fitTimer = setTimeout(flushFit, 300);
+}
+async function flushFit() {
+  clearTimeout(fitTimer);
+  const f = fitDirty; if (!f) return;
+  fitDirty = null;
+  await call('set_fit', f.path, f.scale || 0, f.crop);
+}
+$('scaleSeg').onclick = e => { const b = e.target.closest('button'); if (b && S.fit) setFit(+b.dataset.v, S.fit.crop); };
+$('cropSeg').onclick = e => { const b = e.target.closest('button'); if (b && S.fit && S.fit.scale) setFit(S.fit.scale, !!+b.dataset.v); };
+
+async function useTexture(src, game = P.stock) {
+  if (!M.sel) { P.highlight(null); return toast('Pick the texture to edit on the left first.', 'warn'); }
+  if (src === M.sel) { P.highlight(S.last && S.last.mine && S.last.mine.srcPath); return toast('That is the same texture. Pick a different one.', 'warn'); }
+  await flushFit();
+  const r = await call('use_game', M.sel, src, game);
+  if (r) renderPreview(r);
+}
+async function upload() {
+  if (!M.sel) return toast('Pick the texture to edit on the left first.', 'warn');
+  await flushFit();
+  const r = await call('choose', M.sel);
+  if (r && !r.cancel) renderPreview(r);
+}
+$('mineStage').addEventListener('dblclick', e => { if (!e.target.closest('.bar')) upload(); });
+$('clearSel').onclick = async () => { await flushFit(); M.highlight(null); S.seq++; renderPreview(null); };
+$('discardX').onclick = async () => { await flushFit(); const r = await call('discard', M.sel); if (r) renderPreview(r); };
+$('exportBtn').onclick = async () => { const r = await call('export', M.sel); if (r && r.toast) toast(r.toast, 'ok'); };
+$('restoreBtn').onclick = async () => {
+  if (!await confirmBox('Restore original?', `Delete your replacement for ${base(M.sel)}?`, 'Restore', true)) return;
+  const r = await call('restore', M.sel);
+  if (!r) return;
+  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); preview(M.sel);
+  toast('Original restored. Restart CS:S to see it.', 'ok');
+};
+$('restoreAllBtn').onclick = async () => {
+  const what = S.map ? `every texture you changed on ${S.map}` : 'every global change (made under All game textures)';
+  if (!await confirmBox('Restore all?', `Put ${what} back to the original? (${S.own} texture${S.own === 1 ? '' : 's'})`, 'Restore all', true)) return;
+  await flushFit();
+  const r = await call('restore_all');
+  if (!r) return;
+  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges();
+  if (M.sel) preview(M.sel);
+  toast(`Restored ${r.count} texture${r.count === 1 ? '' : 's'} to the original. Restart CS:S to see it.`, 'ok');
+};
+$('applyBtn').onclick = async () => {
+  await flushFit();
+  $('applyBtn').disabled = true; document.body.style.cursor = 'progress';  // big textures take a moment to compress
+  const r = await call('apply');
+  document.body.style.cursor = '';
+  if (!r) return renderApply();
+  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); if (M.sel) preview(M.sel);
+  toast(r.toast, 'ok');
+};
+
+/* drag & drop onto "Your texture": a texture from either grid, or a file */
+const stage = $('mineStage');
+stage.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (M.sel) stage.classList.add('drag'); });
+stage.addEventListener('dragleave', () => stage.classList.remove('drag'));
+stage.addEventListener('drop', async e => {
+  e.preventDefault(); stage.classList.remove('drag');
+  const tex = e.dataTransfer.getData('text/x-texture');
+  if (tex) { const t = JSON.parse(tex); return useTexture(t.path, t.game); }
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!M.sel) return toast('Pick the texture to edit on the left first.', 'warn');
+  const reader = new FileReader();
+  reader.onload = async () => { await flushFit(); const r = await call('drop', M.sel, file.name, reader.result); if (r) renderPreview(r); };
+  reader.readAsDataURL(file);
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+/* ---------- modal + toast ---------- */
+function modal(title, text, buttons) {
+  return new Promise(resolve => {
+    $('mTitle').textContent = title; $('mText').textContent = text;
+    $('mButtons').innerHTML = buttons.map((b, i) => `<button class="mbtn ${b.cls || ''}" data-b="${i}">${esc(b.label)}</button>`).join('');
+    $('mButtons').querySelectorAll('button').forEach(el => el.onclick = () => { $('modal').classList.remove('open'); resolve(buttons[+el.dataset.b].value); });
+    $('modal').classList.add('open');
+    $('mButtons').lastElementChild.focus();
+  });
+}
+const confirmBox = (title, text, ok, danger) => modal(title, text, [{ label: 'Cancel', value: false }, { label: ok, value: true, cls: 'go' + (danger ? ' danger' : '') }]);
+async function askQuit(n) {
+  const v = await modal('Unapplied changes', `${n} change${n === 1 ? ' is' : 's are'} not applied yet.`,
+    [{ label: 'Cancel', value: null }, { label: 'Discard', value: false }, { label: 'Apply and close', value: true, cls: 'go' }]);
+  if (v !== null) call('quit', v);
+}
+let toastTimer;
+function toast(text, kind = 'ok') {
+  const t = $('toast');
+  t.className = 'toast ' + kind;
+  t.innerHTML = `${I[kind] || I.ok}<div>${esc(text)}</div>`;
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), kind === 'error' ? 8000 : 5000);
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('modal').classList.contains('open')) $('mButtons').firstElementChild.click();
+  if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('filter').focus(); }
+});
+</script>
+</body>
+</html>

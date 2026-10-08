@@ -1,0 +1,9 @@
+# build output
+build/
+dist/
+*.spec
+__pycache__/
+
+# local notes and backups, not part of the app
+NOTES.md
+backup_before_profiles/
