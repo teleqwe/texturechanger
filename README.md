@@ -2,10 +2,12 @@
 
 **Swap any texture in Counter-Strike: Source on your own PC, including the custom textures packed inside maps, without editing a single map file.**
 
-> [!IMPORTANT]
-> **Textures packed inside a map only change on one map at a time, and that map has to be the first map you load or join after starting CS:S.**
-> The map you last applied changes on becomes the *active map*. If you join a different map first (or the server changes map), its packed textures go back to normal until you restart the game.
-> Base game textures aren't affected by this: changes to those work on every map. [Why?](#how-it-works)
+> [!WARNING]
+> ## Load your edited map FIRST
+> After starting CS:S, the **first map you load or join** has to be the map you edited (the app's *active map*).
+> **If you join any other map first, or the server changes map, your edited map shows its original textures again until you restart CS:S.**
+>
+> Map-packed textures also change on **one map at a time**. Base game textures aren't affected: changes to those work on every map. [Why?](#how-it-works)
 
 ![texturechanger](docs/screenshot.png)
 
