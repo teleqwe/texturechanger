@@ -31,16 +31,7 @@ Requires Windows 10/11 with the Microsoft Edge WebView2 runtime (already install
 
 ### Linux (experimental)
 
-Linux support is new and not yet tested on a real Linux install, so please [open an issue](https://github.com/teleqwe/texturechanger/issues) if something doesn't work. It's for the native Linux version of CS:S; Steam is found in `~/.steam/steam`, `~/.local/share/Steam` or the Flatpak folder.
-
-```
-git clone https://github.com/teleqwe/texturechanger && cd texturechanger
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt "pywebview[qt]"
-python3 texturechanger.py
-```
-
-`pywebview[qt]` gives the window a Qt web view. If you'd rather use GTK, install your distro's WebKitGTK Python bindings instead (for example `python3-gi gir1.2-webkit2-4.1` on Debian/Ubuntu) and create the venv with `--system-site-packages`. To get a single binary, run `pip install pyinstaller` and `sh build.sh` (output: `dist/texturechanger`). Settings are kept in `~/.config/texturechanger/`.
+There's no Linux download yet; you run it from source in a few commands. See the [Linux guide](#linux-guide) at the bottom.
 
 ## How to use
 
@@ -109,7 +100,7 @@ python texturechanger.py                              # run from source
 powershell -ExecutionPolicy Bypass -File build.ps1    # run tests, build texturechanger.exe, copy it to the Desktop
 ```
 
-On Linux see [Linux](#linux-experimental); `build.sh` builds `dist/texturechanger`.
+On Linux see the [Linux guide](#linux-guide); `build.sh` builds `dist/texturechanger`.
 
 | File | Purpose |
 | --- | --- |
@@ -124,3 +115,70 @@ Built with [srctools](https://github.com/TeamSpen210/srctools) (VPK / BSP / VTF)
 ## License
 
 [MIT](LICENSE). Not affiliated with Valve. texturechanger only changes files in your own game folder and never touches the game's executables or map files, but use it at your own risk.
+
+## Linux guide
+
+> [!NOTE]
+> Linux support is **experimental**: it hasn't been tested on a real Linux install yet. If something doesn't work, please [open an issue](https://github.com/teleqwe/texturechanger/issues) with the terminal output.
+
+texturechanger works with the **native Linux version** of CS:S. It finds Steam in `~/.steam/steam`, `~/.local/share/Steam` or the Flatpak folder (`~/.var/app/com.valvesoftware.Steam`), and the game in any of your Steam libraries. If it can't, it asks you for the `Counter-Strike Source` folder.
+
+### 1. Install Python and git
+
+You need Python 3.12 or newer, `venv`, and git.
+
+| Distro | Command |
+| --- | --- |
+| Debian / Ubuntu / Mint | `sudo apt install python3 python3-venv git` |
+| Fedora | `sudo dnf install python3 git` |
+| Arch / Manjaro / SteamOS desktop | `sudo pacman -S python git` |
+
+### 2. Download and set it up
+
+```bash
+git clone https://github.com/teleqwe/texturechanger
+cd texturechanger
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt "pywebview[qt]"
+```
+
+`pywebview[qt]` installs the Qt web view the window is drawn with (no system packages needed).
+
+<details>
+<summary>Prefer GTK instead of Qt?</summary>
+
+Install your distro's WebKitGTK Python bindings, then create the venv with access to them and skip `[qt]`:
+
+```bash
+sudo apt install python3-gi gir1.2-webkit2-4.1        # Debian / Ubuntu
+python3 -m venv --system-site-packages .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+```
+</details>
+
+### 3. Run it
+
+```bash
+cd texturechanger
+. .venv/bin/activate
+python3 texturechanger.py
+```
+
+Use it exactly like on Windows (see [How to use](#how-to-use)), and restart CS:S after applying.
+
+### 4. Optional: build a single binary
+
+```bash
+pip install pyinstaller
+sh build.sh            # runs the tests, then builds dist/texturechanger
+./dist/texturechanger
+```
+
+### Good to know
+
+- Settings are kept in `~/.config/texturechanger/settings.json`.
+- Your replacements go in the same place as on Windows: `Counter-Strike Source/cstrike/custom/texturechanger/`.
+- The game treats file names as lowercase on Linux, and texturechanger saves everything in lowercase to match.
+- To update, run `git pull` in the `texturechanger` folder.
