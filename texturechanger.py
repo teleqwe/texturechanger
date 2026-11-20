@@ -122,7 +122,7 @@ def map_textures(bsp_path, lookup):
             return 'map', partial(bsp.pakfile.read, pak[path]), bsp.pakfile.getinfo(pak[path]).file_size
         return lookup(path)
 
-    # ponytail: brushes + skybox + packed files only; static prop textures need MDL parsing.
+    # Brushes + skybox + packed files only; static prop textures would need MDL parsing.
     mats = [m for m in bsp.textures if not m.lower().startswith('tools/')]
     # Raw regex instead of bsp.ents: srctools rejects some maps' unusual entity outputs.
     sky = re.search(rb'"skyname"\s+"([^"]+)"', bsp.get_lump(BSP_LUMPS.ENTITIES))
@@ -189,9 +189,10 @@ def vtf_format(img, orig):
     return fmt, flags
 
 
-def check_replaceable(orig):
+def check_replaceable(orig, path=''):
     if orig.flags & VTFFlags.ENVMAP or orig.frame_count > 1:
-        raise ValueError('Cubemaps and animated textures can only be replaced with a ready-made .vtf (kept as is).')
+        what = f'{Path(path).stem} is a cubemap or animated texture' if path else 'Cubemaps and animated textures'
+        raise ValueError(f'{what}: it can only be replaced with a ready-made .vtf (kept as is).')
 
 
 def make_vtf(img, orig, scale=1, crop=False):
@@ -366,11 +367,20 @@ class Api:
         if os.path.isdir(os.path.join(self._mod, '_source')):
             shutil.move(os.path.join(self._mod, '_source'), os.path.join(self._pdir(GLOBAL), '_source'))
 
-    def _files(self):
+    def _states(self, paths):
+        """{path: 'pending' | 'applied' | ''} for the grid's tiles."""
         prof = self._prof()
         done = self._profile_files(prof) | self._profile_files(GLOBAL)
-        return [[p, SOURCES[s], size, 'pending' if (prof, p) in self._pending else 'applied' if p in done else '']
-                for p, (s, _, size) in sorted(self._entries.items())]
+        return {p: 'pending' if (prof, p) in self._pending else 'applied' if p in done else '' for p in paths}
+
+    def _files(self):
+        st = self._states(self._entries)
+        return [[p, SOURCES[s], size, st[p]] for p, (s, _, size) in sorted(self._entries.items())]
+
+    def _preview_many(self, paths):
+        """Preview of the last selected texture, plus the status of every selected one."""
+        return {**self._preview(paths[-1]), 'states': self._states(paths),
+                'canRestore': any(self._owner(p) is not None for p in paths)}
 
     def _pinned(self):
         """Name of the map pinned (made active) in gameinfo.txt, or None."""
@@ -422,7 +432,7 @@ class Api:
                          if d.lower() != MOD_NAME and os.path.isfile(os.path.join(self._custom, d, *path.split('/')))]
         return out
 
-    def _change(self, path, name, raw, scale, crop, src=None):
+    def _change(self, path, name, raw, scale, crop, src=None, img=None):
         """A replacement as kept in _pending: the decoded file plus Size/Fit. The VTF is only built on Apply.
 
         scale is 1/2/4/8 times the original's size, or None to use a .vtf exactly as it is.
@@ -430,10 +440,11 @@ class Api:
         source, read, _ = self._entries[path]
         orig = read_vtf(read())
         vtf_file = name.lower().endswith('.vtf')
-        img = read_vtf(raw).get().to_PIL() if vtf_file else Image.open(io.BytesIO(raw))
-        img.load()  # fail now on a broken file, not on Apply
+        if img is None:  # img: the same file already decoded for another selected texture (never changed in place)
+            img = read_vtf(raw).get().to_PIL() if vtf_file else Image.open(io.BytesIO(raw))
+            img.load()  # fail now on a broken file, not on Apply
         if scale is not None:
-            check_replaceable(orig)
+            check_replaceable(orig, path)
         return {'raw': raw, 'name': name, 'img': img, 'orig': orig, 'vtf_file': vtf_file, 'scale': scale,
                 'crop': crop, 'source': source, 'profile': self._prof(), 'src': src}
 
@@ -462,9 +473,14 @@ class Api:
                 'asIs': {'w': c['img'].width, 'h': c['img'].height}, 'fmt': vtf_format(src, c['orig'])[0].name,
                 'srcPath': c['src']}
 
-    def _stage(self, path, name, raw, scale, src=None):
-        self._pending[self._key(path)] = self._change(path, name, raw, scale, False, src)
-        return self._preview(path)
+    def _stage(self, paths, name, raw, scale, src=None):
+        """Stage the same replacement for every selected texture (all or none, if one can't take it)."""
+        changes, img = {}, None
+        for p in paths:
+            c = changes[self._key(p)] = self._change(p, name, raw, scale, False, src, img)
+            img = c['img']
+        self._pending.update(changes)
+        return self._preview_many(paths)
 
     def _build(self, c):
         if c['scale'] is None:
@@ -546,8 +562,8 @@ class Api:
                 'own': len(self._profile_files(self._prof()))}
 
     @locked
-    def preview(self, path):
-        return self._preview(path)
+    def preview(self, paths):
+        return self._preview_many(paths)
 
     @locked
     def thumbs(self, paths, stock=False):
@@ -582,46 +598,55 @@ class Api:
         return {'files': [[p, 'Game', size, ''] for p, (_, _, size) in sorted(self._stock.items())]}
 
     @locked
-    def use_game(self, path, src, from_game=False):
-        """Replace `path` with texture `src`, from the base game or from the loaded map's list."""
+    def use_game(self, paths, src, from_game=False):
+        """Replace `paths` with texture `src`, from the base game or from the loaded map's list."""
         entry = self._stock[src] if from_game else self._entries[src]
-        return self._stage(path, src.rsplit('/', 1)[-1], entry[1](), 1, src)  # 1x: same size as the original
+        return self._stage(paths, src.rsplit('/', 1)[-1], entry[1](), 1, src)  # 1x: same size as the original
 
     @locked
-    def choose(self, path):
+    def choose(self, paths):
         res = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=(
             'Images (*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.vtf)', 'All files (*.*)'))
         if not res:
             return {'cancel': True}
         name = Path(res[0]).name
-        return self._stage(path, name, Path(res[0]).read_bytes(), None if name.lower().endswith('.vtf') else 1)
+        return self._stage(paths, name, Path(res[0]).read_bytes(), None if name.lower().endswith('.vtf') else 1)
 
     @locked
-    def drop(self, path, name, data_url):
-        return self._stage(path, name, base64.b64decode(data_url.split(',', 1)[-1]), None if name.lower().endswith('.vtf') else 1)
+    def drop(self, paths, name, data_url):
+        return self._stage(paths, name, base64.b64decode(data_url.split(',', 1)[-1]), None if name.lower().endswith('.vtf') else 1)
 
     @locked
-    def set_fit(self, path, scale, crop):
-        """Remember Size/Fit (scale 1/2/4/8, or 0 = a .vtf as is). No image work: the page draws the preview.
-
-        Changing an applied replacement makes it a new pending change.
+    def set_fit(self, paths, scale, crop):
+        """Remember Size/Fit (scale 1/2/4/8, or 0 = a .vtf as is) for every selected texture that has a replacement.
+        No image work: the page draws the preview. Changing an applied replacement makes it a new pending change.
         """
-        key = self._key(path)
-        c = self._pending.get(key) or self._applied_change(path, self._owner(path))
-        scale = int(scale) or (None if c['vtf_file'] else 1)
-        if scale is not None:
-            check_replaceable(c['orig'])
-        c['scale'], c['crop'] = scale, bool(crop)
-        if c.get('saved') == (c['scale'], c['crop']):
-            self._pending.pop(key, None)  # back to what's applied: nothing to do
-        else:
-            self._pending[key] = c
-        return {'pending': len(self._pending)}
+        found = {}
+        for path in paths:
+            key = self._key(path)
+            if key in self._pending or self._owner(path) is not None:  # else: selected, but nothing replaces it
+                found[key] = self._pending.get(key) or self._applied_change(path, self._owner(path))
+        focus = found.get(self._key(paths[-1]))  # the one the page shows
+        if focus is None:
+            raise ValueError('Nothing to resize: pick a replacement first.')
+        found = {k: c for k, c in found.items() if c['raw'] == focus['raw']}  # others with a different image keep theirs
+        s = int(scale) or (None if focus['vtf_file'] else 1)
+        if s is not None:
+            for (_, path), c in found.items():  # check all before changing any
+                check_replaceable(c['orig'], path)
+        for key, c in found.items():
+            c['scale'], c['crop'] = s, bool(crop)
+            if c.get('saved') == (c['scale'], c['crop']):
+                self._pending.pop(key, None)  # back to what's applied: nothing to do
+            else:
+                self._pending[key] = c
+        return {'pending': len(self._pending), 'states': self._states(paths)}
 
     @locked
-    def discard(self, path):
-        self._pending.pop(self._key(path), None)
-        return self._preview(path)
+    def discard(self, paths):
+        for path in paths:
+            self._pending.pop(self._key(path), None)
+        return self._preview_many(paths)
 
     @locked
     def apply(self):
@@ -630,12 +655,18 @@ class Api:
                 'own': len(self._profile_files(self._prof())), 'pending': len(self._pending)}
 
     @locked
-    def restore(self, path):
-        owner = self._owner(path)
-        for f in (self._dest(path, owner), *self._source_files(path, owner)):
-            Path(f).unlink(missing_ok=True)
-        self._pending.pop(self._key(path), None)
-        if owner != GLOBAL and self._pinned() == owner and not self._profile_files(owner):
+    def restore(self, paths):
+        owners = set()
+        for path in paths:
+            owner = self._owner(path)
+            self._pending.pop(self._key(path), None)
+            if owner is None:  # selected, but never applied
+                continue
+            owners.add(owner)
+            for f in (self._dest(path, owner), *self._source_files(path, owner)):
+                Path(f).unlink(missing_ok=True)
+        pinned = self._pinned()
+        if pinned in owners and pinned != GLOBAL and not self._profile_files(pinned):
             self._write_pin(None)  # the active map has no changes left
         self._install()
         return {'files': self._files(), 'active': self._pinned(), 'profiles': self._profile_names(),

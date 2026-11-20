@@ -132,8 +132,10 @@ button.mini:hover { background: rgba(242,184,75,.22); }
 .tgl:hover { color: var(--text); }
 .tgl.on { color: white; background: var(--accent); border-color: var(--accent); }
 input[type=range] { width: 90px; accent-color: var(--accent); }
-.grid { flex: 1; overflow: auto; padding: 0 12px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr)); gap: 8px; align-content: start; outline: none; }
-.group { grid-column: 1 / -1; position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 4px 6px; background: var(--panel);
+.grid { flex: 1; overflow: auto; padding: 0 12px 12px; outline: none; }
+.sec { content-visibility: auto; padding-bottom: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr)); gap: 8px; margin-top: 8px; }
+.group { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 4px 6px; background: var(--panel);
   color: var(--muted); font-size: 12px; font-weight: 600; }
 .group .n { color: var(--faint); font-weight: 400; }
 .cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); flex: none; }
@@ -149,6 +151,13 @@ input[type=range] { width: 90px; accent-color: var(--accent); }
 .dot { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: white; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
 .dot.applied { background: var(--ok); }
 .dot.pending { background: var(--accent); width: 12px; height: 12px; border: 2px solid white; top: 8px; right: 8px; }
+.multi .tile.sel .thumb::before { content: ''; position: absolute; top: 5px; left: 5px; z-index: 1; width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 11px no-repeat; }
+.picks { position: absolute; inset: 0; z-index: 2; overflow: auto; padding: 12px; background: #1f2126; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; align-content: start; }
+.pk { position: relative; min-width: 0; }
+.pkx { position: absolute; top: 4px; right: 4px; z-index: 1; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: rgba(18,19,22,.85); cursor: pointer; display: grid; place-items: center; }
+.pkx svg { width: 13px; height: 13px; }
+.pkx:hover { background: var(--danger); color: white; }
 .tlabel { margin-top: 5px; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .tdim { font: 10px var(--mono); color: var(--faint); text-align: center; height: 13px; }
 .placeholder { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 40px; }
@@ -204,9 +213,9 @@ input[type=range] { width: 90px; accent-color: var(--accent); }
       <div class="card-head">
         <button class="field map-btn map-anchor" id="mapBtn" title="Choose a map"><span data-i="map"></span><span class="name" id="mapName">All game textures</span><span data-i="chevDown"></span></button>
         <span class="tex-name" id="texName"></span><span id="srcPill"></span><span class="meta" id="origMeta"></span>
-        <div class="hbtns" id="selBtns" hidden><button id="clearSel" title="Deselect this texture"><span data-i="x"></span></button></div>
+        <div class="hbtns" id="selBtns" hidden><button id="clearSel" title="Deselect"><span data-i="x"></span></button></div>
       </div>
-      <div class="stage" id="origStage"><div class="tiled" id="origTiles"></div><div class="empty" id="origEmpty"></div></div>
+      <div class="stage" id="origStage"><div class="tiled" id="origTiles"></div><div class="empty" id="origEmpty"></div><div class="picks" id="picks" hidden></div></div>
     </div>
     <div class="card">
       <div class="card-head"><span class="label">YOUR TEXTURE</span><span id="mineBadges" style="display:flex;gap:6px;align-items:center"></span><span class="meta" id="mineMeta"></span>
@@ -294,25 +303,28 @@ async function call(name, ...args) {
   const res = await api[name](...args);
   if (res && res.error) { toast(res.error, 'error'); return null; }
   if (res && typeof res.pending === 'number') { S.pending = res.pending; renderApply(); }  // unapplied changes, on any map
+  if (res && res.states) setStatuses(res.states);  // every selected texture
   return res;
 }
 
 /* ---------- texture grid: every texture at once, grouped by folder ---------- */
-function Browser({ grid, onSelect, uploadTile }) {
-  const B = { files: [], byPath: new Map(), sel: null, filter: '', changed: false, sort: 'az', stock: false, queue: [], pumping: false,
+function Browser({ grid, onSelect, uploadTile, multi }) {  // multi: clicks toggle tiles in/out of B.picked
+  const B = { files: [], byPath: new Map(), sel: null, picked: [], filter: '', changed: false, sort: 'az', stock: false, queue: [], pumping: false,
     extra: [] };  // extra: changes saved on other maps, shown on top with "Changed first" (left grid only)
   const scope = () => B.stock ? '' : (S.map || '');
   const tileEl = path => grid.querySelector(`.tile[data-path="${CSS.escape(path)}"]`);
   const dirOf = p => p.slice(0, p.lastIndexOf('/'));
+  const isSel = p => multi ? B.picked.includes(p) : B.sel === p;
+  if (multi) grid.classList.add('multi');
   const rank = f => f[3] === 'pending' ? 0 : f[3] === 'applied' ? 1 : 2;
 
-  B.load = files => { B.files = files; B.byPath = new Map(files.map(f => [f[0], f])); B.sel = null; };
-  B.update = files => { const sel = B.sel; B.load(files); B.sel = sel; };  // same files, new statuses
+  B.load = files => { B.files = files; B.byPath = new Map(files.map(f => [f[0], f])); B.sel = null; B.picked = []; };
+  B.update = files => { const { sel, picked } = B; B.load(files); B.sel = sel; B.picked = picked; };  // same files, new statuses
 
   B.tileHTML = f => {
     const [path, , , status] = f;
     const t = thumbCache.get(scope() + '|' + path);
-    return `<div class="tile${B.sel === path ? ' sel' : ''}" data-kind="file" data-path="${esc(path)}" title="${esc(path.slice(10))}" draggable="true">
+    return `<div class="tile${isSel(path) ? ' sel' : ''}" data-kind="file" data-path="${esc(path)}" title="${esc(path.slice(10))}" draggable="true">
       <div class="thumb"><img${t ? ` class="ok" src="${t.url}"` : ''} alt="">${status ? `<span class="dot ${status}" title="${status === 'pending' ? 'Not applied' : 'Applied'}">${status === 'applied' ? I.tick : ''}</span>` : ''}</div>
       <div class="tlabel">${esc(base(path))}</div><div class="tdim">${t ? `${t.w}×${t.h}` : ''}</div></div>`;
   };
@@ -321,9 +333,13 @@ function Browser({ grid, onSelect, uploadTile }) {
   const sectionHTML = (title, n = '') => `<div class="group" data-dir="">${esc(title)}<span class="n">${n}</span></div>`;
   B.render = (keepScroll = false) => {
     const top = grid.scrollTop;
+    // estimated folder height while it's off screen and not laid out, so the scrollbar is about right
+    const tw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tile')) || 120, w = grid.clientWidth - 24;
+    const cols = Math.max(1, Math.floor((w + 8) / (tw + 8))), rowH = (w - 8 * (cols - 1)) / cols + 56;
+    const sec = (head, tiles) => `<section class="sec" style="contain-intrinsic-size: auto ${Math.round(42 + Math.ceil(tiles.length / cols) * rowH)}px">${head}<div class="tiles">${tiles.join('')}</div></section>`;
     const words = B.filter.toLowerCase().split(/\s+/).filter(Boolean);
     const match = p => words.every(w => p.includes(w));
-    const out = uploadTile ? [sectionHTML('Custom'), `<div class="tile upload" data-kind="upload" title="Use an image or .vtf from your PC"><div class="thumb upl">${I.upload}</div><div class="tlabel">Upload file</div><div class="tdim"></div></div>`] : [];
+    const out = uploadTile ? [sec(sectionHTML('Custom'), [`<div class="tile upload" data-kind="upload" title="Use an image or .vtf from your PC"><div class="thumb upl">${I.upload}</div><div class="tlabel">Upload file</div><div class="tdim"></div></div>`])] : [];
     const changedFirst = B.sort === 'changed';
     let shown = 0;
     if (changedFirst) {  // everything changed goes on top, whatever folder (or map) it's from
@@ -331,14 +347,13 @@ function Browser({ grid, onSelect, uploadTile }) {
       const others = B.extra.filter(c => match(c.path) || match(c.map));
       // sections named after the map the changes belong to (the right grid just says Changed)
       const here = uploadTile ? 'Changed' : (S.map || 'All game textures');
-      if (changed.length) { out.push(sectionHTML(here, changed.length)); changed.forEach(f => out.push(B.tileHTML(f))); }
+      if (changed.length) out.push(sec(sectionHTML(here, changed.length), changed.map(B.tileHTML)));
       const maps = [...new Set(others.map(c => c.map))];
       for (const map of maps) {
         const mine = others.filter(c => c.map === map);
-        out.push(sectionHTML(map, mine.length));
-        mine.forEach(c => out.push(`<div class="tile" data-kind="jump" data-map="${esc(c.map)}" data-path="${esc(c.path)}" title="${esc(c.path.slice(10))} on ${esc(c.map)}: click to open that map">
+        out.push(sec(sectionHTML(map, mine.length), mine.map(c => `<div class="tile" data-kind="jump" data-map="${esc(c.map)}" data-path="${esc(c.path)}" title="${esc(c.path.slice(10))} on ${esc(c.map)}: click to open that map">
           <div class="thumb">${c.thumb ? `<img class="ok" src="${c.thumb.url}" alt="">` : ''}<span class="dot applied">${I.tick}</span></div>
-          <div class="tlabel">${esc(base(c.path))}</div><div class="tdim">${c.thumb ? `${c.thumb.w}×${c.thumb.h}` : ''}</div></div>`));
+          <div class="tlabel">${esc(base(c.path))}</div><div class="tdim">${c.thumb ? `${c.thumb.w}×${c.thumb.h}` : ''}</div></div>`)));
       }
       shown += changed.length + others.length;
     }
@@ -349,7 +364,7 @@ function Browser({ grid, onSelect, uploadTile }) {
       (groups.get(d) || groups.set(d, []).get(d)).push(f);
     }
     const dirs = [...groups.keys()].sort();
-    for (const d of dirs) { out.push(groupHTML(d, groups.get(d))); for (const f of groups.get(d)) out.push(B.tileHTML(f)); shown++; }
+    for (const d of dirs) { out.push(sec(groupHTML(d, groups.get(d)), groups.get(d).map(B.tileHTML))); shown++; }
     if (!shown) out.push(`<div class="placeholder">${B.files.length ? 'Nothing matches' : 'No textures'}</div>`);
     grid.innerHTML = out.join('');
     grid.scrollTop = keepScroll ? top : 0;
@@ -357,8 +372,17 @@ function Browser({ grid, onSelect, uploadTile }) {
     if (!keepScroll) { const sel = grid.querySelector('.tile.sel'); if (sel) sel.scrollIntoView({ block: 'nearest' }); }
   };
 
-  const mark = tile => { grid.querySelectorAll('.tile.sel').forEach(t => t.classList.remove('sel')); if (tile) tile.classList.add('sel'); };
-  B.highlight = path => { B.sel = path; const t = path && tileEl(path); mark(t); if (t) t.scrollIntoView({ block: 'nearest' }); };
+  const mark = () => {
+    grid.querySelectorAll('.tile.sel').forEach(t => t.classList.remove('sel'));
+    (multi ? B.picked : [B.sel]).forEach(p => { const t = p && tileEl(p); if (t) t.classList.add('sel'); });
+  };
+  B.highlight = path => { B.sel = path; B.picked = path ? [path] : []; mark(); const t = path && tileEl(path); if (t) t.scrollIntoView({ block: 'nearest' }); };
+  B.toggle = path => {  // the last one picked is the one previewed (B.sel)
+    const i = B.picked.indexOf(path);
+    if (i < 0) B.picked.push(path); else B.picked.splice(i, 1);
+    B.sel = B.picked.length ? B.picked[B.picked.length - 1] : null;
+    mark(); onSelect(B.sel);
+  };
   B.select = path => { B.highlight(path); onSelect(path); };
   B.updateFile = f => {  // redraw one tile and its folder's dot after its status changed
     B.byPath.set(f[0], f);
@@ -386,13 +410,16 @@ function Browser({ grid, onSelect, uploadTile }) {
       const sc = scope(), batch = B.queue.splice(0, 16);
       const r = await call('thumbs', batch, B.stock);
       if (!r || sc !== scope()) break;
+      let picked = false;
       for (const [path, t] of Object.entries(r)) {
         if (!t) continue;
         thumbCache.set(sc + '|' + path, t);
+        picked = picked || B.picked.includes(path);
         const tile = tileEl(path); if (!tile) continue;
         const img = tile.querySelector('img'); img.src = t.url; img.classList.add('ok');
         tile.querySelector('.tdim').textContent = `${t.w}×${t.h}`;
       }
+      if (multi && picked) renderPicks();  // the selected list was drawn before these thumbnails arrived
     }
     B.pumping = false;
   }
@@ -402,6 +429,7 @@ function Browser({ grid, onSelect, uploadTile }) {
     grid.focus();
     if (tile.dataset.kind === 'upload') upload();
     else if (tile.dataset.kind === 'jump') openChange(tile.dataset.map, tile.dataset.path);
+    else if (multi) B.toggle(tile.dataset.path);
     else B.select(tile.dataset.path);
   });
   grid.addEventListener('dragstart', e => {  // drag a texture onto "Your texture" to use it
@@ -411,7 +439,7 @@ function Browser({ grid, onSelect, uploadTile }) {
   });
   grid.addEventListener('keydown', e => {  // arrows move between tiles, also across folder groups
     const all = [...grid.querySelectorAll('.tile[data-kind="file"]')]; if (!all.length) return;
-    let i = all.findIndex(t => t.classList.contains('sel'));
+    let i = all.findIndex(t => t.dataset.path === B.sel);
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault(); i = Math.max(0, Math.min(all.length - 1, i < 0 ? 0 : i + (e.key === 'ArrowRight' ? 1 : -1)));
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -419,11 +447,14 @@ function Browser({ grid, onSelect, uploadTile }) {
       if (i < 0) i = 0;
       else {
         const cur = all[i], down = e.key === 'ArrowDown';
-        const rows = all.filter(t => down ? t.offsetTop > cur.offsetTop : t.offsetTop < cur.offsetTop);
+        const near = all.slice(Math.max(0, i - 60), i + 61);  // the next/previous row is always within this
+        const pos = new Map(near.map(t => [t, t.getBoundingClientRect()]));  // not offsetTop: each folder section measures from its own top
+        const top = t => Math.round(pos.get(t).top), left = t => pos.get(t).left;
+        const rows = near.filter(t => down ? top(t) > top(cur) : top(t) < top(cur));
         if (!rows.length) return;
-        const rowTop = down ? Math.min(...rows.map(t => t.offsetTop)) : Math.max(...rows.map(t => t.offsetTop));
-        const row = rows.filter(t => t.offsetTop === rowTop);
-        const best = row.reduce((a, b) => Math.abs(b.offsetLeft - cur.offsetLeft) < Math.abs(a.offsetLeft - cur.offsetLeft) ? b : a);
+        const rowTop = down ? Math.min(...rows.map(top)) : Math.max(...rows.map(top));
+        const row = rows.filter(t => top(t) === rowTop);
+        const best = row.reduce((a, b) => Math.abs(left(b) - left(cur)) < Math.abs(left(a) - left(cur)) ? b : a);
         i = all.indexOf(best);
       }
     } else return;
@@ -433,7 +464,7 @@ function Browser({ grid, onSelect, uploadTile }) {
 }
 
 /* left: textures of the loaded map to edit; right: what to replace the selected one with */
-const M = Browser({ grid: $('grid'), onSelect: path => preview(path) });
+const M = Browser({ grid: $('grid'), onSelect: path => path ? preview() : clearPreview(), multi: true });
 const P = Browser({ grid: $('pGrid'), onSelect: path => useTexture(path), uploadTile: true });
 P.stock = true;
 
@@ -569,10 +600,10 @@ $('mapList').addEventListener('mousedown', e => { const it = e.target.closest('.
 document.addEventListener('mousedown', e => { if (!e.target.closest('.map-pop, .map-anchor')) closeMaps(); });
 
 /* ---------- preview + actions ---------- */
-async function preview(path) {
+async function preview() {  // the last selected texture, plus the state of the whole selection
   await flushFit();
   const seq = ++S.seq;
-  const r = await call('preview', path);
+  const r = await call('preview', M.picked);
   if (seq === S.seq && r) renderPreview(r);
 }
 
@@ -589,7 +620,7 @@ function renderPreview(r) {
   $('selBtns').hidden = !has;
   $('mineBtns').hidden = !mine;
   $('mineEmpty').style.display = mine ? 'none' : '';
-  $('mineEmpty').innerHTML = has ? '<div class="big">Pick a replacement on the right</div>or drop a file here · double-click to upload' : '';
+  $('mineEmpty').innerHTML = has ? `<div class="big">Pick a replacement on the right</div>${M.picked.length > 1 ? `It replaces all ${M.picked.length} selected textures<br>` : ''}or drop a file here · double-click to upload` : '';
   if (!mine) $('mineMeta').textContent = r && r.mineError ? 'preview failed' : '';
   $('fitbar').hidden = $('cmpbar').hidden = !mine;
   if (mine) $('asIs').hidden = !mine.vtfFile;
@@ -599,7 +630,23 @@ function renderPreview(r) {
   if (r) setStatus(r.path, mine ? mine.state : '');
   P.highlight(mine && mine.srcPath);
   renderStages();
+  renderPicks();
 }
+async function clearPreview() { await flushFit(); S.seq++; renderPreview(null); }
+
+function renderPicks() {  // 2+ textures selected: the Original card lists them, each with an X to deselect it
+  const n = M.picked.length;
+  $('picks').hidden = n < 2;
+  if (n < 2) return;
+  $('texName').textContent = `${n} textures selected`;
+  $('srcPill').innerHTML = ''; $('origMeta').textContent = ''; $('exportBtn').disabled = true;
+  $('picks').innerHTML = M.picked.map(p => {
+    const t = thumbCache.get((S.map || '') + '|' + p);
+    return `<div class="pk" title="${esc(p.slice(10))}"><div class="thumb">${t ? `<img class="ok" src="${t.url}" alt="">` : ''}</div>
+      <button class="pkx" data-path="${esc(p)}" title="Deselect">${I.x}</button><div class="tlabel">${esc(base(p))}</div></div>`;
+  }).join('');
+}
+$('picks').onclick = e => { const b = e.target.closest('.pkx'); if (b) M.toggle(b.dataset.path); };
 
 function renderBadges() {
   const r = S.last, mine = r && r.mine;
@@ -610,15 +657,20 @@ function renderBadges() {
   $('mineBadges').innerHTML = badges;
   if ($('activate')) $('activate').onclick = async () => {
     const res = await call('set_active', r.map);
-    if (res) { S.active = res.active; renderChip(); toast(`${r.map} is now the active map. Restart CS:S to see it.`, 'ok'); preview(M.sel); }
+    if (res) { S.active = res.active; renderChip(); toast(`${r.map} is now the active map. Restart CS:S to see it.`, 'ok'); preview(); }
   };
   $('discardX').disabled = !(mine && mine.state === 'pending');
 }
 
-function setStatus(path, status) {
-  const f = M.byPath.get(path); if (!f || f[3] === status) return;
-  f[3] = status;
-  M.updateFile(f);
+function setStatus(path, status) { setStatuses({ [path]: status }); }
+function setStatuses(states) {  // {path: status}: one redraw for many tiles ("Changed first" redraws the whole grid)
+  const changed = [];
+  for (const [path, status] of Object.entries(states)) {
+    const f = M.byPath.get(path);
+    if (f && f[3] !== status) { f[3] = status; changed.push(f); }
+  }
+  if (!changed.length) return;
+  if (M.sort === 'changed') M.render(true); else changed.forEach(M.updateFile);
   renderApply();
 }
 
@@ -699,7 +751,7 @@ function setFit(scale, crop) {
   const r = S.last; if (!r || !r.mine) return;
   if (!scale && !r.mine.vtfFile) scale = 1;
   S.fit = { scale, crop };
-  fitDirty = { path: r.path, scale, crop };
+  fitDirty = { paths: M.picked.slice(), scale, crop };
   const sv = r.mine.saved;  // what's applied: going back to it isn't a change
   const state = sv && (sv.scale || 0) === (scale || 0) && sv.crop === crop ? 'applied' : 'pending';
   if (r.mine.state !== state) { r.mine.state = state; S.pending += state === 'pending' ? 1 : -1; renderBadges(); setStatus(r.path, state); }
@@ -710,33 +762,37 @@ async function flushFit() {
   clearTimeout(fitTimer);
   const f = fitDirty; if (!f) return;
   fitDirty = null;
-  await call('set_fit', f.path, f.scale || 0, f.crop);
+  await call('set_fit', f.paths, f.scale || 0, f.crop);
 }
 $('scaleSeg').onclick = e => { const b = e.target.closest('button'); if (b && S.fit) setFit(+b.dataset.v, S.fit.crop); };
 $('cropSeg').onclick = e => { const b = e.target.closest('button'); if (b && S.fit && S.fit.scale) setFit(S.fit.scale, !!+b.dataset.v); };
 
 async function useTexture(src, game = P.stock) {
-  if (!M.sel) { P.highlight(null); return toast('Pick the texture to edit on the left first.', 'warn'); }
-  if (src === M.sel) { P.highlight(S.last && S.last.mine && S.last.mine.srcPath); return toast('That is the same texture. Pick a different one.', 'warn'); }
+  if (!M.picked.length) { P.highlight(null); return toast('Pick the texture to edit on the left first.', 'warn'); }
+  if (M.picked.includes(src)) { P.highlight(S.last && S.last.mine && S.last.mine.srcPath); return toast('That is one of the textures you are replacing. Pick a different one.', 'warn'); }
   await flushFit();
-  const r = await call('use_game', M.sel, src, game);
-  if (r) renderPreview(r);
+  const seq = ++S.seq;
+  const r = await call('use_game', M.picked, src, game);
+  if (r && seq === S.seq) renderPreview(r);
 }
 async function upload() {
-  if (!M.sel) return toast('Pick the texture to edit on the left first.', 'warn');
+  if (!M.picked.length) return toast('Pick the texture to edit on the left first.', 'warn');
   await flushFit();
-  const r = await call('choose', M.sel);
-  if (r && !r.cancel) renderPreview(r);
+  const seq = ++S.seq;
+  const r = await call('choose', M.picked);
+  if (r && !r.cancel && seq === S.seq) renderPreview(r);
 }
 $('mineStage').addEventListener('dblclick', e => { if (!e.target.closest('.bar')) upload(); });
-$('clearSel').onclick = async () => { await flushFit(); M.highlight(null); S.seq++; renderPreview(null); };
-$('discardX').onclick = async () => { await flushFit(); const r = await call('discard', M.sel); if (r) renderPreview(r); };
+$('clearSel').onclick = () => { M.highlight(null); clearPreview(); };
+$('discardX').onclick = async () => { await flushFit(); const seq = ++S.seq; const r = await call('discard', M.picked); if (r && seq === S.seq) renderPreview(r); };
 $('exportBtn').onclick = async () => { const r = await call('export', M.sel); if (r && r.toast) toast(r.toast, 'ok'); };
 $('restoreBtn').onclick = async () => {
-  if (!await confirmBox('Restore original?', `Delete your replacement for ${base(M.sel)}?`, 'Restore', true)) return;
-  const r = await call('restore', M.sel);
+  const n = M.picked.length;
+  if (!await confirmBox('Restore original?', n > 1 ? `Restore the original of the ${n} selected textures? This deletes their applied replacements and drops changes not applied yet.` : `Delete your replacement for ${base(M.sel)}?`, 'Restore', true)) return;
+  await flushFit();
+  const r = await call('restore', M.picked);
   if (!r) return;
-  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); preview(M.sel);
+  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); preview();
   toast('Original restored. Restart CS:S to see it.', 'ok');
 };
 $('restoreAllBtn').onclick = async () => {
@@ -746,7 +802,7 @@ $('restoreAllBtn').onclick = async () => {
   const r = await call('restore_all');
   if (!r) return;
   S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges();
-  if (M.sel) preview(M.sel);
+  if (M.sel) preview();
   toast(`Restored ${r.count} texture${r.count === 1 ? '' : 's'} to the original. Restart CS:S to see it.`, 'ok');
 };
 $('applyBtn').onclick = async () => {
@@ -755,7 +811,7 @@ $('applyBtn').onclick = async () => {
   const r = await call('apply');
   document.body.style.cursor = '';
   if (!r) return renderApply();
-  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); if (M.sel) preview(M.sel);
+  S.active = r.active; S.profiles = r.profiles; S.own = r.own; renderChip(); M.update(r.files); M.render(); renderApply(); loadPicker(); refreshOtherChanges(); if (M.sel) preview();
   toast(r.toast, 'ok');
 };
 
@@ -769,9 +825,9 @@ stage.addEventListener('drop', async e => {
   if (tex) { const t = JSON.parse(tex); return useTexture(t.path, t.game); }
   const file = e.dataTransfer.files[0];
   if (!file) return;
-  if (!M.sel) return toast('Pick the texture to edit on the left first.', 'warn');
+  if (!M.picked.length) return toast('Pick the texture to edit on the left first.', 'warn');
   const reader = new FileReader();
-  reader.onload = async () => { await flushFit(); const r = await call('drop', M.sel, file.name, reader.result); if (r) renderPreview(r); };
+  reader.onload = async () => { await flushFit(); const seq = ++S.seq; const r = await call('drop', M.picked, file.name, reader.result); if (r && seq === S.seq) renderPreview(r); };
   reader.readAsDataURL(file);
 });
 window.addEventListener('dragover', e => e.preventDefault());

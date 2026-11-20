@@ -38,7 +38,7 @@ There's no Linux download yet; you run it from source in a few commands. See the
 ## How to use
 
 1. **Pick a map** with the dropdown in the top-left corner, or keep *All game textures*.
-2. **Click the texture to change** in the bottom-left grid.
+2. **Click the texture to change** in the bottom-left grid. Click more to change several at once (click again to deselect; arrow keys go back to selecting one).
 3. **Click what to replace it with** in the bottom-right grid (*Game* textures, *This map*'s textures, or *Upload file*).
    You can also drop an image on **Your texture**, or double-click it to upload.
 4. Adjust **Size** and **Fit** if you like. The eye button lays the original over yours to compare sizes.
@@ -48,7 +48,8 @@ There's no Linux download yet; you run it from source in a few commands. See the
 | --- | --- |
 | **X** on Your texture | Drops a change you haven't applied yet |
 | **↺** on Your texture | Restores the original (deletes your applied replacement) |
-| **X** on Original | Deselects the texture |
+| **X** on Original | Deselects all selected textures |
+| **X** on a texture in the selected list | Deselects just that one |
 | **Restore all** | Puts every texture changed on this map (or all global changes) back |
 | **Export** | Saves the original texture as a PNG |
 | **Pin chip** (top left) | Shows the active map; click it to open that map |

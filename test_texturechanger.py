@@ -98,7 +98,7 @@ orig_vtf = make_vtf(opaque, orig(ImageFormats.DXT1))
 api._entries, api._current = {tex: ('map', lambda: orig_vtf, len(orig_vtf))}, 'bhop_a'
 png = io.BytesIO()
 opaque.save(png, 'PNG')
-api._stage(tex, 'mine.png', png.getvalue(), 2)
+api._stage([tex], 'mine.png', png.getvalue(), 2)
 api._current = None  # a change made on bhop_a doesn't show as pending under All game textures
 assert api._files()[0][3] == '' and api.load('')['pending'] == 1
 api._entries, api._current = {tex: ('map', lambda: orig_vtf, len(orig_vtf))}, 'bhop_a'
@@ -108,12 +108,48 @@ live = os.path.join(cs, 'custom', 'texturechanger', *tex.split('/'))
 assert VTF.read(open(live, 'rb')).width == 512  # 2x the original's 256
 assert get_pin(open(os.path.join(cs, 'gameinfo.txt'), newline='').read()) == 'maps/bhop_a.bsp'
 assert api._files()[0][3] == 'applied'
-r = api.restore(tex)
+r = api.restore([tex])
 assert 'error' not in r and r['active'] is None and not os.path.exists(live)
 assert open(os.path.join(cs, 'gameinfo.txt'), newline='').read() == gi  # unpinned: exact original bytes
-api._stage(tex, 'mine.png', png.getvalue(), 1)
+api._stage([tex], 'mine.png', png.getvalue(), 1)
 api.apply()
 assert api.restore_all()['count'] == 1 and not os.path.exists(live)
+# Several textures at once: one replacement, Size, discard, apply and restore all reach every selected one.
+wall = 'materials/bhop/wall.vtf'
+api._entries[wall] = ('map', lambda: orig_vtf, len(orig_vtf))
+r = api._stage([tex, wall], 'mine.png', png.getvalue(), 1)
+assert r['path'] == wall and r['states'] == {tex: 'pending', wall: 'pending'} and len(api._pending) == 2
+assert api.set_fit([tex, wall], 2, False)['pending'] == 2 and all(c['scale'] == 2 for c in api._pending.values())
+assert api.discard([tex, wall])['states'] == {tex: '', wall: ''} and not api._pending
+api._stage([tex, wall], 'mine.png', png.getvalue(), 1)
+api.apply()
+assert all(os.path.exists(os.path.join(cs, 'custom', 'texturechanger', *t.split('/'))) for t in (tex, wall))
+assert api.set_fit([tex, wall], 1, False)['pending'] == 0  # back to what's applied: not a change
+r = api.restore([tex, wall])
+assert 'error' not in r and r['active'] is None and api._profile_files('bhop_a') == set()
+# One decode shared by every selected texture; Size/Fit only reaches the ones showing the same image.
+api._stage([tex, wall], 'mine.png', png.getvalue(), 1)
+assert api._pending[('bhop_a', tex)]['img'] is api._pending[('bhop_a', wall)]['img']
+other = io.BytesIO()
+seethrough.save(other, 'PNG')
+api._stage([wall], 'other.png', other.getvalue(), 1)
+api.set_fit([wall, tex], 4, False)  # tex is the one shown; wall has a different image and keeps its size
+assert api._pending[('bhop_a', tex)]['scale'] == 4 and api._pending[('bhop_a', wall)]['scale'] == 1
+# A cubemap in the selection: resizing fails for all (none half-done) and the error names it.
+cube = 'materials/bhop/sky.vtf'
+cube_buf = io.BytesIO()
+VTF(64, 64, (7, 2), fmt=ImageFormats.DXT1, flags=VTFFlags.ENVMAP).save(cube_buf)
+api._entries[cube] = ('map', lambda: cube_buf.getvalue(), 1)
+api._pending.clear()
+api._stage([cube, tex], 'ready.vtf', orig_vtf, None)  # a .vtf as is: allowed on a cubemap
+r = api.set_fit([cube, tex], 1, False)
+assert 'sky' in r['error'] and all(c['scale'] is None for c in api._pending.values())
+try:
+    api._stage([tex, cube], 'mine.png', png.getvalue(), 1)
+    raise AssertionError('cubemap should be rejected')
+except ValueError as e:
+    assert 'sky' in str(e) and api._pending[('bhop_a', tex)]['scale'] is None  # nothing staged
+api._pending.clear()
 assert 'error' in api.load('bhop_gone')  # deleted map: clear error instead of a KeyError
 
 print('ok')
